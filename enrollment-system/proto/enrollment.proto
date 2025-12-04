@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package enrollment;
+
+service EnrollmentService {
+    rpc CreateEnrollment(CreateEnrollmentRequest) returns (EnrollmentResponse);
+    rpc GetEnrollment(GetEnrollmentRequest) returns (EnrollmentResponse);
+    rpc ListEnrollments(ListEnrollmentsRequest) returns (ListEnrollmentsResponse);
+    rpc UpdateEnrollmentStatus(UpdateEnrollmentStatusRequest) returns (EnrollmentResponse);
+    rpc GetStudentEnrollments(GetStudentEnrollmentsRequest) returns (ListEnrollmentsResponse);
+}
+
+message CreateEnrollmentRequest {
+    int32 student_id = 1;
+    int32 section_id = 2;
+}
+
+message GetEnrollmentRequest {
+    int32 enrollment_id = 1;
+}
+
+message ListEnrollmentsRequest {
+    optional int32 student_id = 1;
+    optional int32 section_id = 2;
+    optional string status = 3;
+    int32 limit = 4;
+    int32 offset = 5;
+}
+
+message GetStudentEnrollmentsRequest {
+    int32 student_id = 1;
+    optional string status = 2;
+}
+
+message ListEnrollmentsResponse {
+    repeated EnrollmentResponse enrollments = 1;
+    int32 total = 2;
+}
+
+message UpdateEnrollmentStatusRequest {
+    int32 enrollment_id = 1;
+    string status = 2;
+}
+
+message EnrollmentResponse {
+    int32 id = 1;
+    int32 student_id = 2;
+    int32 section_id = 3;
+    string status = 4;
+    string enrolled_at = 5;
+}

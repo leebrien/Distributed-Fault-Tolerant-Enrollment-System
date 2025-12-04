@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package course;
+
+service CourseService {
+    rpc GetCourse(GetCourseRequest) returns (CourseResponse);
+    rpc ListCourses(ListCoursesRequest) returns (ListCoursesResponse);
+    rpc GetSection(GetSectionRequest) returns (SectionResponse);
+    rpc ListSections(ListSectionsRequest) returns (ListSectionsResponse);
+    rpc CheckSectionAvailability(GetSectionRequest) returns (AvailabilityResponse);
+    rpc UpdateEnrollmentCount(UpdateEnrollmentCountRequest) returns (UpdateEnrollmentCountResponse);
+}
+
+message GetCourseRequest {
+    int32 course_id = 1;
+}
+
+message ListCoursesRequest {
+    int32 limit = 1;
+    int32 offset = 2;
+}
+
+message ListCoursesResponse {
+    repeated CourseResponse courses = 1;
+    int32 total = 2;
+}
+
+message CourseResponse {
+    int32 id = 1;
+    string code = 2;
+    string name = 3;
+    string description = 4;
+    int32 units = 5;
+}
+
+message GetSectionRequest {
+    int32 section_id = 1;
+}
+
+message ListSectionsRequest {
+    optional int32 course_id = 1;
+    optional bool is_open = 2;
+    int32 limit = 3;
+    int32 offset = 4;
+}
+
+message ListSectionsResponse {
+    repeated SectionResponse sections = 1;
+    int32 total = 2;
+}
+
+message SectionResponse {
+    int32 id = 1;
+    int32 course_id = 2;
+    string section_code = 3;
+    optional int32 faculty_id = 4;
+    string schedule = 5;
+    int32 capacity = 6;
+    int32 enrolled_count = 7;
+    bool is_open = 8;
+    optional CourseResponse course = 9;
+}
+
+message AvailabilityResponse {
+    bool is_available = 1;
+    int32 remaining_slots = 2;
+    string message = 3;
+}
+
+message UpdateEnrollmentCountRequest {
+    int32 section_id = 1;
+    int32 increment = 2;
+}
+
+message UpdateEnrollmentCountResponse {
+    bool success = 1;
+    int32 new_count = 2;
+}

@@ -1,0 +1,218 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  gateway:
+    build: ./gateway
+    container_name: enrollment-gateway
+    ports:
+      - "80:80"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.10
+    depends_on:
+      - frontend
+      - auth-service
+      - user-service
+      - course-service
+      - enrollment-service
+      - grade-service
+    restart: unless-stopped
+
+  # Frontend (View Node)
+  frontend:
+    build: ./frontend
+    container_name: enrollment-frontend
+    ports:
+      - "3000:3000"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.20
+    environment:
+      - VITE_API_URL=http://172.28.0.10
+    restart: unless-stopped
+
+  # Auth Service
+  auth-service:
+    build: ./services/auth-service
+    container_name: enrollment-auth
+    ports:
+      - "4001:4001"
+      - "5001:5001"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.21
+    environment:
+      - PORT=4001
+      - GRPC_PORT=5001
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - REDIS_HOST=172.28.0.32
+      - REDIS_PORT=6379
+      - USER_SERVICE_GRPC=172.28.0.25:5005
+    depends_on:
+      - redis
+      - postgres-primary
+    restart: unless-stopped
+
+  # User Service
+  user-service:
+    build: ./services/user-service
+    container_name: enrollment-user
+    ports:
+      - "4005:4005"
+      - "5005:5005"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.25
+    environment:
+      - PORT=4005
+      - GRPC_PORT=5005
+      - DB_HOST=172.28.0.30
+      - DB_PORT=5432
+      - DB_NAME=enrollment_db
+      - DB_USER=postgres
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+    depends_on:
+      - postgres-primary
+    restart: unless-stopped
+
+  # Course Service
+  course-service:
+    build: ./services/course-service
+    container_name: enrollment-course
+    ports:
+      - "4002:4002"
+      - "5002:5002"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.22
+    environment:
+      - PORT=4002
+      - GRPC_PORT=5002
+      - DB_HOST=172.28.0.30
+      - DB_PORT=5432
+      - DB_NAME=enrollment_db
+      - DB_USER=postgres
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+    depends_on:
+      - postgres-primary
+    restart: unless-stopped
+
+  # Enrollment Service
+  enrollment-service:
+    build: ./services/enrollment-service
+    container_name: enrollment-enroll
+    ports:
+      - "4003:4003"
+      - "5003:5003"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.23
+    environment:
+      - PORT=4003
+      - GRPC_PORT=5003
+      - DB_HOST=172.28.0.30
+      - DB_PORT=5432
+      - DB_NAME=enrollment_db
+      - DB_USER=postgres
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - COURSE_SERVICE_GRPC=172.28.0.22:5002
+      - USER_SERVICE_GRPC=172.28.0.25:5005
+    depends_on:
+      - postgres-primary
+    restart: unless-stopped
+
+  # Grade Service
+  grade-service:
+    build: ./services/grade-service
+    container_name: enrollment-grade
+    ports:
+      - "4004:4004"
+      - "5004:5004"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.24
+    environment:
+      - PORT=4004
+      - GRPC_PORT=5004
+      - DB_HOST=172.28.0.30
+      - DB_PORT=5432
+      - DB_NAME=enrollment_db
+      - DB_USER=postgres
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - ENROLLMENT_SERVICE_GRPC=172.28.0.23:5003
+      - USER_SERVICE_GRPC=172.28.0.25:5005
+    depends_on:
+      - postgres-primary
+    restart: unless-stopped
+
+  # PostgreSQL Primary Database
+  postgres-primary:
+    build: ./database/primary
+    container_name: enrollment-db-primary
+    ports:
+      - "5432:5432"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.30
+    environment:
+      - POSTGRES_DB=enrollment_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_HOST_AUTH_METHOD=md5
+      - POSTGRES_REPLICATION_USER=replicator
+      - POSTGRES_REPLICATION_PASSWORD=${REPLICATION_PASSWORD:-replicator123}
+    volumes:
+      - postgres-primary-data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+  # PostgreSQL Replica Database
+  postgres-replica:
+    build: ./database/replica
+    container_name: enrollment-db-replica
+    ports:
+      - "5433:5432"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.31
+    environment:
+      - POSTGRES_DB=enrollment_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - PRIMARY_HOST=172.28.0.30
+      - PRIMARY_PORT=5432
+      - REPLICATION_USER=replicator
+      - REPLICATION_PASSWORD=${REPLICATION_PASSWORD:-replicator123}
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql/data
+    depends_on:
+      - postgres-primary
+    restart: unless-stopped
+
+  # Redis for Session Management
+  redis:
+    image: redis:7-alpine
+    container_name: enrollment-redis
+    ports:
+      - "6379:6379"
+    networks:
+      enrollment-network:
+        ipv4_address: 172.28.0.32
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+networks:
+  enrollment-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+
+volumes:
+  postgres-primary-data:
+  postgres-replica-data:
+  redis-data:

@@ -1,0 +1,45 @@
+# Environment variables
+.env
+
+# Node modules
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database data
+postgres-data/
+*.sql.backup
+
+# Docker volumes
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.js.map
+
+# Generated proto files
+*_pb.js
+*_grpc_pb.js
+
+# Temporary files
+tmp/
+temp/

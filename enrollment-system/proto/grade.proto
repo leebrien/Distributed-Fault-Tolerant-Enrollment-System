@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package grade;
+
+service GradeService {
+    rpc CreateGrade(CreateGradeRequest) returns (GradeResponse);
+    rpc GetGrade(GetGradeRequest) returns (GradeResponse);
+    rpc UpdateGrade(UpdateGradeRequest) returns (GradeResponse);
+    rpc GetGradeByEnrollment(GetGradeByEnrollmentRequest) returns (GradeResponse);
+    rpc ListStudentGrades(ListStudentGradesRequest) returns (ListGradesResponse);
+}
+
+message CreateGradeRequest {
+    int32 enrollment_id = 1;
+    double grade = 2;
+    string remarks = 3;
+    int32 updated_by = 4;
+}
+
+message GetGradeRequest {
+    int32 grade_id = 1;
+}
+
+message GetGradeByEnrollmentRequest {
+    int32 enrollment_id = 1;
+}
+
+message UpdateGradeRequest {
+    int32 grade_id = 1;
+    double grade = 2;
+    string remarks = 3;
+    int32 updated_by = 4;
+}
+
+message ListStudentGradesRequest {
+    int32 student_id = 1;
+}
+
+message ListGradesResponse {
+    repeated GradeResponse grades = 1;
+    int32 total = 2;
+}
+
+message GradeResponse {
+    int32 id = 1;
+    int32 enrollment_id = 2;
+    double grade = 3;
+    string remarks = 4;
+    int32 updated_by = 5;
+    string updated_at = 6;
+}
