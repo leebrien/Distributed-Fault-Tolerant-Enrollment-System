@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # --- CONTROLLER / ROUTER ---
+  gateway:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - course-service
+      - frontend
+
+  # --- VIEW ---
+  frontend:
+    build: ./frontend
+
+  # --- MICROSERVICES ---
+  auth-service:
+    build: ./auth-service
+    environment:
+      - NODE_ENV=production
+
+  course-service:
+    build: ./course-service
+    environment:
+      - NODE_ENV=production
+
+  # --- DATABASE LAYER (Simulated Redundancy) ---
+  db-primary:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: enrollment_db
+    volumes:
+      - ./init-scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  db-replica:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: enrollment_db
+    depends_on:
+      - db-primary
