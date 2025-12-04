@@ -22,23 +22,39 @@ services:
     build: ./auth-service
     environment:
       - NODE_ENV=production
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=enrollment_db
+      - DB_HOST_PRIMARY=db-primary
+      - DB_HOST_REPLICA=db-replica
 
   course-service:
     build: ./course-service
     environment:
       - NODE_ENV=production
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=enrollment_db
+      - DB_HOST_PRIMARY=db-primary
+      - DB_HOST_REPLICA=db-replica
       
   grade-service:
     build: ./grade-service
     environment:
       - NODE_ENV=production
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=enrollment_db
+      - DB_HOST_PRIMARY=db-primary
+      - DB_HOST_REPLICA=db-replica
     depends_on:
       - db-primary
 
-  # --- DATABASE LAYER (Simulated Redundancy) ---
+  # --- DATABASE LAYER ---
   db-primary:
     image: postgres:15-alpine
     environment:
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: enrollment_db
     volumes:
@@ -47,7 +63,12 @@ services:
   db-replica:
     image: postgres:15-alpine
     environment:
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: enrollment_db
+    volumes:
+      # CRITICAL FIX: We mount the same SQL file here so the replica 
+      # has the tables and data when it starts up.
+      - ./init-scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     depends_on:
       - db-primary
