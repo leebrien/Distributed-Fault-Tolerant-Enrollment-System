@@ -26,13 +26,28 @@ app.get('/api/courses', async (req, res) => {
 // POST: Enroll a student
 app.post('/api/courses/enroll', async (req, res) => {
     const { studentId, courseId } = req.body;
+    
     try {
-        // Transaction: Add enrollment and decrease capacity (optional logic, kept simple here)
+        // 1. Check if course has space (Optional but good safety)
+        const courseCheck = await pool.query('SELECT capacity FROM courses WHERE id = $1', [courseId]);
+        if (courseCheck.rows[0].capacity <= 0) {
+            return res.status(400).json({ message: "Course is full!" });
+        }
+
+        // 2. Insert Enrollment (This will fail if already enrolled due to UNIQUE constraint)
         await pool.query('INSERT INTO enrollments (student_id, course_id) VALUES ($1, $2)', [studentId, courseId]);
+
+        // 3. DECREMENT CAPACITY (The missing piece!)
+        await pool.query('UPDATE courses SET capacity = capacity - 1 WHERE id = $1', [courseId]);
+
         res.json({ message: "Enrollment Successful!" });
     } catch (err) {
         console.error(err);
-        res.status(400).json({ message: "Already enrolled or invalid ID" });
+        // Check duplicate error code (23505 is unique_violation in Postgres)
+        if (err.code === '23505') {
+            return res.status(400).json({ message: "You are already enrolled in this course." });
+        }
+        res.status(500).json({ message: "Enrollment failed." });
     }
 });
 

@@ -25,7 +25,16 @@ app.post('/api/auth/login', async (req, res) => {
         if (result.rows.length > 0) {
             const user = result.rows[0];
             const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: '1h' });
-            res.json({ token, message: "Login Successful", user: { id: user.id, username: user.username } });
+            
+            res.json({ 
+                token, 
+                message: "Login Successful", 
+                user: { 
+                    id: user.id, 
+                    username: user.username, 
+                    role: user.role 
+                } 
+            });
         } else {
             res.status(401).json({ message: "Invalid credentials" });
         }

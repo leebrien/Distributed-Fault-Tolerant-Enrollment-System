@@ -16,7 +16,7 @@
 
     <nav class="navbar navbar-dark bg-primary mb-4">
         <div class="container">
-            <a class="navbar-brand" href="#">DLSU Distributed Portal</a>
+            <a class="navbar-brand" href="#">Better animo.sys</a>
             <div id="user-display" class="text-white"></div>
             <button id="logout-btn" class="btn btn-sm btn-light hidden" onclick="logout()">Logout</button>
         </div>
@@ -41,10 +41,44 @@
         </div>
 
         <div id="dashboard-section" class="hidden">
-            <h2 class="mb-4">Available Courses</h2>
-            <div id="course-list" class="row">
+            <ul class="nav nav-tabs mb-4">
+                <li class="nav-item" id="nav-courses">
+                    <a class="nav-link active" href="#" onclick="switchTab('courses')">Available Courses</a>
+                </li>
+                <li class="nav-item" id="nav-grades">
+                    <a class="nav-link" href="#" onclick="switchTab('grades')">My Grades</a>
+                </li>
+                <li class="nav-item hidden" id="nav-faculty">
+                    <a class="nav-link text-danger" href="#" onclick="switchTab('faculty')">Faculty Upload</a>
+                </li>
+            </ul>
+
+            <div id="tab-courses">
+                <div id="course-list" class="row"></div>
+                <div id="course-error" class="alert alert-danger hidden"></div>
+            </div>
+
+            <div id="tab-grades" class="hidden">
+                <h3>Academic Record</h3>
+                <div id="grades-list" class="mt-3"></div>
+                <div id="grade-error" class="alert alert-danger hidden"></div>
+            </div>
+
+            <div id="tab-faculty" class="hidden">
+                <div class="card p-4 bg-light">
+                    <h4>Faculty Grade Upload</h4>
+                    <div class="mb-2">
+                        <input type="number" id="f-student-id" class="form-control" placeholder="Student ID (e.g. 1)">
+                    </div>
+                    <div class="mb-2">
+                        <input type="number" id="f-course-id" class="form-control" placeholder="Course ID (e.g. 1)">
+                    </div>
+                    <div class="mb-2">
+                        <input type="number" id="f-grade" class="form-control" placeholder="Grade (e.g. 4.0)">
+                    </div>
+                    <button class="btn btn-danger" onclick="uploadGrade()">Upload Grade</button>
                 </div>
-            <div id="course-error" class="alert alert-danger hidden"></div>
+            </div>
         </div>
 
     </div>
@@ -82,8 +116,28 @@
             document.getElementById('login-section').classList.add('hidden');
             document.getElementById('dashboard-section').classList.remove('hidden');
             document.getElementById('logout-btn').classList.remove('hidden');
-            document.getElementById('user-display').innerText = `Welcome, ${currentUser.username}`;
-            loadCourses();
+            document.getElementById('user-display').innerText = `Welcome, ${currentUser.username} (${currentUser.role})`;
+            
+            // --- STRICT ROLE VIEW ---
+            if (currentUser.role === 'faculty') {
+                // FACULTY VIEW: Show Upload, Hide Student Stuff
+                document.getElementById('nav-faculty').classList.remove('hidden');
+                document.getElementById('nav-courses').classList.add('hidden');
+                document.getElementById('nav-grades').classList.add('hidden');
+                
+                // Automatically switch to the faculty tab
+                switchTab('faculty'); 
+            } else {
+                // STUDENT VIEW: Hide Upload, Show Student Stuff
+                document.getElementById('nav-faculty').classList.add('hidden');
+                document.getElementById('nav-courses').classList.remove('hidden');
+                document.getElementById('nav-grades').classList.remove('hidden');
+                
+                // Automatically switch to courses
+                switchTab('courses');
+                loadCourses();
+            }
+
         }
 
         function logout() {
@@ -130,11 +184,90 @@
                     body: JSON.stringify({ studentId: currentUser.id, courseId: courseId })
                 });
                 const data = await res.json();
+                
+                // Show message
                 alert(data.message);
+
+                // FIX: If successful, reload the list to show new capacity
+                if (res.ok) {
+                    loadCourses();
+                }
+
             } catch (err) {
                 alert("Enrollment failed (Service might be down)");
             }
         }
+
+        function switchTab(tab) {
+            // 1. Hide all content sections
+            document.getElementById('tab-courses').classList.add('hidden');
+            document.getElementById('tab-grades').classList.add('hidden');
+            document.getElementById('tab-faculty').classList.add('hidden');
+            
+            // 2. Remove 'active' class from all nav links
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+
+            // 3. Show selected content
+            document.getElementById('tab-' + tab).classList.remove('hidden');
+
+            // 4. Set the clicked tab to active
+            // We use a mapping because your ID names (nav-courses) are slightly different from tab names (courses)
+            if(tab === 'courses') document.querySelector('#nav-courses a').classList.add('active');
+            if(tab === 'grades') document.querySelector('#nav-grades a').classList.add('active');
+            if(tab === 'faculty') document.querySelector('#nav-faculty a').classList.add('active');
+
+            // 5. Load data if needed
+            if (tab === 'grades') loadGrades();
+            if (tab === 'courses') loadCourses(); // Good practice to refresh this too
+        }
+
+        async function loadGrades() {
+            try {
+                // We pass studentId as a query param for this demo
+                const res = await fetch(`/api/grades?studentId=${currentUser.id}`);
+                if (!res.ok) throw new Error("Service Down");
+
+                const data = await res.json();
+                const container = document.getElementById('grades-list');
+                
+                if (data.data.length === 0) {
+                    container.innerHTML = "<p>No grades found.</p>";
+                    return;
+                }
+
+                let html = `<table class="table"><thead><tr><th>Course</th><th>Grade</th></tr></thead><tbody>`;
+                data.data.forEach(g => {
+                    html += `<tr><td>${g.title}</td><td><strong>${g.grade}</strong></td></tr>`;
+                });
+                html += `</tbody></table><small class="text-muted">Served by: ${data.node}</small>`;
+                container.innerHTML = html;
+
+            } catch (err) {
+                document.getElementById('grade-error').classList.remove('hidden');
+                document.getElementById('grade-error').innerText = "Grade Service is temporarily unavailable.";
+            }
+        }
+
+        async function uploadGrade() {
+            const studentId = document.getElementById('f-student-id').value;
+            const courseId = document.getElementById('f-course-id').value;
+            const grade = document.getElementById('f-grade').value;
+
+            try {
+                const res = await fetch('/api/grades', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ studentId, courseId, grade })
+                });
+                const data = await res.json();
+                alert(data.message);
+            } catch (err) {
+                alert("Upload failed. Grade Service might be down.");
+            }
+        }
+        
     </script>
 </body>
 </html>

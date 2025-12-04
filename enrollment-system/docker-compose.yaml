@@ -27,6 +27,13 @@ services:
     build: ./course-service
     environment:
       - NODE_ENV=production
+      
+  grade-service:
+    build: ./grade-service
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - db-primary
 
   # --- DATABASE LAYER (Simulated Redundancy) ---
   db-primary:
