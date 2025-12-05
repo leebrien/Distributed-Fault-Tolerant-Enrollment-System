@@ -7,8 +7,6 @@
 ### Build & Run Instructions
 
 **1. Navigate to the project directory**
-
-*Option A (Relative Path - Recommended for general use):*
 ```bash
 cd enrollment-system
 
