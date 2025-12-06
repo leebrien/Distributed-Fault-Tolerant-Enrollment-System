@@ -11,9 +11,8 @@
         .service-badge { font-size: 0.8em; opacity: 0.7; }
         .hidden { display: none; }
         
-        /* Custom overrides for green theme active tabs */
         .nav-tabs .nav-link.active {
-            color: #198754 !important; /* Bootstrap success green */
+            color: #198754 !important;
             font-weight: bold;
             border-top: 3px solid #198754;
         }
@@ -134,7 +133,6 @@
             document.getElementById('logout-btn').classList.remove('hidden');
             document.getElementById('user-display').innerText = `Welcome, ${currentUser.username} (${currentUser.role})`;
             
-            // --- STRICT ROLE VIEW ---
             if (currentUser.role === 'faculty') {
                 // FACULTY VIEW
                 document.getElementById('nav-faculty').classList.remove('hidden');
@@ -201,41 +199,40 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ studentId: currentUser.id, courseId: courseId })
                 });
+                
                 const data = await res.json();
                 
-                alert(data.message);
-
                 if (res.ok) {
-                    loadCourses();
+                    alert(data.message || "Enrollment Successful!");
+                    loadCourses(); 
+                } else {
+                    console.error("Server Error:", data);
+                    alert("Failed: " + (data.message || "System is in Read-Only Mode"));
                 }
 
             } catch (err) {
-                alert("Enrollment failed (Service might be down)");
+                console.error(err);
+                alert("Network Error: Service is unreachable.");
             }
         }
 
         function switchTab(tab) {
-            // 1. Hide all content sections
             document.getElementById('tab-courses').classList.add('hidden');
             document.getElementById('tab-grades').classList.add('hidden');
             document.getElementById('tab-faculty').classList.add('hidden');
             document.getElementById('tab-students').classList.add('hidden');
             
-            // 2. Remove 'active' class from all nav links
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.classList.remove('active');
             });
 
-            // 3. Show selected content
             document.getElementById('tab-' + tab).classList.remove('hidden');
 
-            // 4. Set the clicked tab to active
             if(tab === 'courses') document.querySelector('#nav-courses a').classList.add('active');
             if(tab === 'grades') document.querySelector('#nav-grades a').classList.add('active');
             if(tab === 'faculty') document.querySelector('#nav-faculty a').classList.add('active');
             if(tab === 'students') document.querySelector('#nav-students a').classList.add('active');
 
-            // 5. Load data
             if (tab === 'grades') loadGrades();
             if (tab === 'courses') loadCourses();
             if (tab === 'students') loadStudents();
@@ -254,7 +251,6 @@
                     return;
                 }
 
-                // CHANGED: table-success for green tint
                 let html = `<table class="table table-hover"><thead><tr class="table-success"><th>Course</th><th>Grade</th></tr></thead><tbody>`;
                 data.data.forEach(g => {
                     html += `<tr><td>${g.title}</td><td><strong>${g.grade}</strong></td></tr>`;

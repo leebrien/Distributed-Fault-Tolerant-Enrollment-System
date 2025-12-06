@@ -4,8 +4,7 @@ const app = express();
 
 app.use(express.json());
 
-// --- DATABASE FAILOVER CONFIGURATION ---
-
+// DB Failover Config
 const primaryConfig = {
     user: 'postgres',
     host: 'db-primary',
@@ -23,21 +22,21 @@ let activePool = null;
 
 async function connectDB() {
     try {
-        console.log("🔌 Grade-Service: Attempting connection to PRIMARY...");
+        console.log("Grade-Service: Attempting connection to PRIMARY...");
         const p = new Pool(primaryConfig);
         await p.query('SELECT 1'); 
-        console.log("✅ Grade-Service: Connected to PRIMARY.");
+        console.log("Grade-Service: Connected to PRIMARY.");
         activePool = p;
     } catch (err) {
-        console.error("❌ Grade-Service: Primary failed.");
-        console.warn("⚠️  Grade-Service: Failover -> Switching to REPLICA...");
+        console.error("Grade-Service: PRIMARY failed.");
+        console.warn("Grade-Service: Failover -> Switching to REPLICA...");
         try {
             const r = new Pool(replicaConfig);
             await r.query('SELECT 1'); 
-            console.log("✅ Grade-Service: Connected to REPLICA (Read-Only).");
+            console.log("Grade-Service: Connected to REPLICA (Read-Only).");
             activePool = r;
         } catch (fatalErr) {
-            console.error("💀 Grade-Service: All databases are down.");
+            console.error("Grade-Service: All databases are down.");
             activePool = null;
         }
     }
@@ -53,9 +52,7 @@ const pool = {
     }
 };
 
-// --- ROUTES ---
-
-// REQ 4: Student views previous grades (Will WORK on Replica)
+// Routes
 app.get('/api/grades', async (req, res) => {
     const studentId = req.query.studentId; 
 
@@ -70,7 +67,6 @@ app.get('/api/grades', async (req, res) => {
         `;
         const result = await pool.query(query, [studentId]);
         
-        // Added debug info
         const mode = activePool.options.host === 'db-primary' ? 'Primary' : 'Replica';
         res.json({ node: "Grade-Service-Node", db_mode: mode, data: result.rows });
     } catch (err) {
@@ -79,7 +75,6 @@ app.get('/api/grades', async (req, res) => {
     }
 });
 
-// REQ 5: Faculty uploads grades (Will FAIL on Replica)
 app.post('/api/grades', async (req, res) => {
     const { studentId, courseId, grade } = req.body;
     
@@ -99,7 +94,6 @@ app.post('/api/grades', async (req, res) => {
     } catch (err) {
         console.error(err);
         
-        // Handle Read-Only Replica Error
         if (err.message.includes('read-only transaction')) {
             return res.status(503).json({ message: "Cannot upload grades: Main Database is down (Read-Only Mode)." });
         }

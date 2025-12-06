@@ -4,7 +4,7 @@ const app = express();
 
 app.use(express.json());
 
-// --- DATABASE FAILOVER CONFIGURATION ---
+// DB Failover Config
 
 const primaryConfig = {
     user: 'postgres',
@@ -23,21 +23,21 @@ let activePool = null;
 
 async function connectDB() {
     try {
-        console.log("🔌 Course-Service: Attempting connection to PRIMARY...");
+        console.log("Course-Service: Attempting connection to PRIMARY...");
         const p = new Pool(primaryConfig);
         await p.query('SELECT 1'); 
-        console.log("✅ Course-Service: Connected to PRIMARY.");
+        console.log("Course-Service: Connected to PRIMARY.");
         activePool = p;
     } catch (err) {
-        console.error("❌ Course-Service: Primary failed.");
-        console.warn("⚠️  Course-Service: Failover -> Switching to REPLICA...");
+        console.error("Course-Service: PRIMARY failed.");
+        console.warn("Course-Service: Failover -> Switching to REPLICA...");
         try {
             const r = new Pool(replicaConfig);
             await r.query('SELECT 1'); 
-            console.log("✅ Course-Service: Connected to REPLICA (Read-Only).");
+            console.log("Course-Service: Connected to REPLICA (Read-Only).");
             activePool = r;
         } catch (fatalErr) {
-            console.error("💀 Course-Service: All databases are down.");
+            console.error("Course-Service: All databases are down.");
             activePool = null;
         }
     }
@@ -53,9 +53,9 @@ const pool = {
     }
 };
 
-// --- ROUTES ---
+// Routes
 
-// GET: List all courses (Will WORK on Replica)
+// Get list of all courses
 app.get('/api/courses', async (req, res) => {
     const studentId = req.query.studentId;
 
@@ -75,7 +75,7 @@ app.get('/api/courses', async (req, res) => {
         }
 
         const result = await pool.query(query, params);
-        // Added "Mode" to response so you can see which DB is answering in your test
+
         const mode = activePool.options.host === 'db-primary' ? 'Primary' : 'Replica (Read-Only)';
         res.json({ node: "Course-Service-Node-1", db_mode: mode, data: result.rows });
     } catch (err) {
@@ -84,35 +84,29 @@ app.get('/api/courses', async (req, res) => {
     }
 });
 
-// POST: Enroll a student (Will FAIL on Replica - Read Only)
+// Enroll a student (Primary only)
 app.post('/api/courses/enroll', async (req, res) => {
     const { studentId, courseId } = req.body;
     
     try {
-        // 1. Check if course has space 
+        if (activePool.options.host === 'db-replica') {
+             return res.status(503).json({ 
+                 message: "Enrollment FAILED: System is in Read-Only Mode." 
+             });
+        }
+
         const courseCheck = await pool.query('SELECT capacity FROM courses WHERE id = $1', [courseId]);
         if (courseCheck.rows[0].capacity <= 0) {
             return res.status(400).json({ message: "Course is full!" });
         }
 
-        // 2. Insert Enrollment 
         await pool.query('INSERT INTO enrollments (student_id, course_id) VALUES ($1, $2)', [studentId, courseId]);
-
-        // 3. DECREMENT CAPACITY
         await pool.query('UPDATE courses SET capacity = capacity - 1 WHERE id = $1', [courseId]);
 
         res.json({ message: "Enrollment Successful!" });
+
     } catch (err) {
         console.error(err);
-        
-        // Handle Read-Only Replica Error
-        if (err.message.includes('read-only transaction')) {
-            return res.status(503).json({ message: "System is in maintenance mode (Read-Only). Try again later." });
-        }
-
-        if (err.code === '23505') {
-            return res.status(400).json({ message: "You are already enrolled in this course." });
-        }
         res.status(500).json({ message: "Enrollment failed." });
     }
 });

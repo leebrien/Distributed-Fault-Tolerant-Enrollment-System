@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # --- CONTROLLER / ROUTER ---
+  # Controller/Router
   gateway:
     image: nginx:alpine
     ports:
@@ -13,11 +13,11 @@ services:
       - course-service
       - frontend
 
-  # --- VIEW ---
+  # View
   frontend:
     build: ./frontend
 
-  # --- MICROSERVICES ---
+  # Microservices
   auth-service:
     build: ./auth-service
     environment:
@@ -50,7 +50,7 @@ services:
     depends_on:
       - db-primary
 
-  # --- DATABASE LAYER ---
+  # Db Layers
   db-primary:
     image: postgres:15-alpine
     environment:
@@ -67,8 +67,6 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: enrollment_db
     volumes:
-      # CRITICAL FIX: We mount the same SQL file here so the replica 
-      # has the tables and data when it starts up.
       - ./init-scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     depends_on:
       - db-primary

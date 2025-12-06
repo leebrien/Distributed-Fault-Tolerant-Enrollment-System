@@ -7,7 +7,7 @@ app.use(express.json());
 
 const SECRET_KEY = "supersecretdistributedsystemkey";
 
-// --- DATABASE FAILOVER CONFIGURATION ---
+// DB Failover Configs
 
 const primaryConfig = {
     user: 'postgres',
@@ -25,45 +25,44 @@ const replicaConfig = {
 let activePool = null;
 
 async function connectDB() {
-    // 1. Try Primary
+    // Try Pimary DB first
     try {
-        console.log("🔌 Auth-Service: Attempting connection to PRIMARY...");
+        console.log("Attempting connection to PRIMARY...");
         const p = new Pool(primaryConfig);
-        await p.query('SELECT 1'); // Test connection
-        console.log("✅ Auth-Service: Connected to PRIMARY.");
+        await p.query('SELECT 1');
+        console.log("Connected to PRIMARY.");
         activePool = p;
     } catch (err) {
-        console.error("❌ Auth-Service: Primary failed.");
-        console.warn("⚠️  Auth-Service: Failover -> Switching to REPLICA...");
+        console.error("Auth-Service: PRIMARY failed.");
+        console.warn("Auth-Service: Failover -> Switching to REPLICA...");
         
-        // 2. Try Replica
+        // Try Replica if Primary fails
         try {
             const r = new Pool(replicaConfig);
-            await r.query('SELECT 1'); // Test connection
-            console.log("✅ Auth-Service: Connected to REPLICA (Read-Only).");
+            await r.query('SELECT 1');
+            console.log("Auth-Service: Connected to REPLICA (Read-Only).");
             activePool = r;
         } catch (fatalErr) {
-            console.error("💀 Auth-Service: All databases are down.");
+            console.error("Auth-Service: All databases are down.");
             activePool = null;
         }
     }
 }
 
-// Initial connection attempt
+// Connection attempt
 connectDB();
 
-// Wrapper so routes don't crash if DB is swapping
 const pool = {
     query: async (text, params) => {
         if (!activePool) {
-            await connectDB(); // Retry if null
+            await connectDB();
         }
         if (!activePool) throw new Error("Database is offline");
         return activePool.query(text, params);
     }
 };
 
-// --- ROUTES ---
+// Routes
 
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
