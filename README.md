@@ -1,4 +1,4 @@
-# STDISCM-P4
+# Distributed Fault Tolerant Enrollment System
 
 ### Prerequisites
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
