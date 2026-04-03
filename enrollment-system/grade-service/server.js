@@ -1,3 +1,4 @@
+const { checkValidation, validateGrade, validateGradeQuery } = require('./middleware/validate');
 const express = require('express');
 const { Pool } = require('pg');
 const app = express();
@@ -53,7 +54,12 @@ const pool = {
 };
 
 // Routes
-app.get('/api/grades', async (req, res) => {
+
+// Get grades for a student
+app.get('/api/grades', validateGradeQuery, async (req, res) => {
+    const invalid = checkValidation(req, res);
+    if (invalid) return;
+
     const studentId = req.query.studentId; 
 
     if (!studentId) return res.status(400).json({ message: "Student ID required" });
@@ -75,7 +81,12 @@ app.get('/api/grades', async (req, res) => {
     }
 });
 
-app.post('/api/grades', async (req, res) => {
+
+// Upload or update a grade
+app.post('/api/grades', validateGrade, async (req, res) => {
+    const invalid = checkValidation(req, res);
+    if (invalid) return;
+
     const { studentId, courseId, grade } = req.body;
     
     if (!studentId || !courseId || !grade) {
