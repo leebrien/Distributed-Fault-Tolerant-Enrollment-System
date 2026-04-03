@@ -97,11 +97,11 @@ app.post('/api/auth/login', validateLogin, async (req, res) => {
     }
 });
 
-// Registration route (new, Person 2 adds the full handler — you just add validation)
+// Registration route (new, Franz adds the full handler)
 app.post('/api/auth/register', validateRegister, async (req, res) => {
   const invalid = checkValidation(req, res);
   if (invalid) return;
-  // Person 2 fills in the body
+  // TODO (FRANZ)
 });
 
 // list students and their courses for faculty
