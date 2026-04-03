@@ -1,3 +1,4 @@
+const { checkValidation, validateLogin, validateRegister } = require('./middleware/validate');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
@@ -64,7 +65,11 @@ const pool = {
 
 // Routes
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', validateLogin, async (req, res) => {
+
+    const invalid = checkValidation(req, res);
+    if (invalid) return; // response already sent
+
     const { username, password } = req.body;
     try {
         // Query (Works on Primary AND Replica)
@@ -90,6 +95,13 @@ app.post('/api/auth/login', async (req, res) => {
         console.error(err);
         res.status(500).json({ message: "Database error" });
     }
+});
+
+// Registration route (new, Person 2 adds the full handler — you just add validation)
+app.post('/api/auth/register', validateRegister, async (req, res) => {
+  const invalid = checkValidation(req, res);
+  if (invalid) return;
+  // Person 2 fills in the body
 });
 
 // list students and their courses for faculty
