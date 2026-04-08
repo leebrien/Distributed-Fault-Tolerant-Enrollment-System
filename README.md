@@ -17,3 +17,5 @@ Access the Application
 Once the containers are running, you can access the Frontend node via your browser:
 
 http://localhost:8080
+
+Note: This follow-up documentation note was added for PR purposes. If you change the compose setup or exposed ports, update the URL above to match your local environment.
