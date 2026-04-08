@@ -596,9 +596,7 @@ app.post('/api/auth/password-reset', async (req, res) => {
                 return res.status(401).json({ message: "Security answer is incorrect" });
             }
 
-            const passwordUpdate = await updatePasswordForUser(client, user, newPassword, {
-                enforceMinAge: false
-            });
+            const passwordUpdate = await updatePasswordForUser(client, user, newPassword);
 
             if (!passwordUpdate.ok) {
                 await client.query('ROLLBACK');
