@@ -42,10 +42,6 @@ const validateRegister = [
 
 // Enrollment
 const validateEnroll = [
-  body('studentId')
-    .notEmpty().withMessage('Student ID is required.')
-    .isInt({ min: 1 }).withMessage('Student ID must be a positive integer.'),
-
   body('courseId')
     .notEmpty().withMessage('Course ID is required.')
     .isInt({ min: 1 }).withMessage('Course ID must be a positive integer.'),

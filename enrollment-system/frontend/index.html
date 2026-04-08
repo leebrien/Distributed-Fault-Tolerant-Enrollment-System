@@ -1,319 +1,549 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed University</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #f8f9fa; }
-        .card { box-shadow: 0 4px 8px rgba(0,0,0,0.1); border: none; }
-        .service-badge { font-size: 0.8em; opacity: 0.7; }
-        .hidden { display: none; }
-        
-        .nav-tabs .nav-link.active {
-            color: #198754 !important;
-            font-weight: bold;
-            border-top: 3px solid #198754;
-        }
-        .nav-link { color: #495057; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Distributed University</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { min-height: 100vh; background: linear-gradient(180deg, #eef4ff 0%, #f8fbf7 55%, #ffffff 100%); }
+    .card { border: 1px solid rgba(25, 135, 84, 0.08); border-radius: 18px; box-shadow: 0 18px 40px rgba(14, 34, 56, 0.08); }
+    .hidden { display: none !important; }
+    .nav-tabs { border-bottom: none; gap: 0.5rem; flex-wrap: wrap; }
+    .nav-tabs .nav-link { border: none; border-radius: 999px; color: #375163; background: rgba(55, 81, 99, 0.08); }
+    .nav-tabs .nav-link.active { color: #fff !important; background: #198754; font-weight: 600; }
+    .empty { padding: 1rem; border-radius: 14px; background: rgba(25, 135, 84, 0.06); color: #375163; }
+    .table td, .table th { vertical-align: middle; }
+  </style>
 </head>
 <body>
-
-    <nav class="navbar navbar-dark bg-success mb-4">
-        <div class="container">
-            <a class="navbar-brand" href="#">Better animo.sys</a>
-            <div id="user-display" class="text-white"></div>
-            <button id="logout-btn" class="btn btn-sm btn-light hidden" onclick="logout()">Logout</button>
-        </div>
-    </nav>
-
+  <nav class="navbar navbar-dark bg-success mb-4">
     <div class="container">
-        
-        <div id="login-section" class="row justify-content-center">
-            <div class="col-md-4">
-                <div class="card p-4">
-                    <h4 class="text-center mb-3">Student Login</h4>
-                    <div class="mb-3">
-                        <input type="text" id="username" class="form-control" placeholder="Username (e.g. student1)">
-                    </div>
-                    <div class="mb-3">
-                        <input type="password" id="password" class="form-control" placeholder="Password">
-                    </div>
-                    <button class="btn btn-success w-100" onclick="login()">Sign In</button>
-                    <div id="login-error" class="text-danger mt-2 text-center"></div>
-                </div>
-            </div>
+      <a class="navbar-brand fw-semibold" href="#">Better animo.sys</a>
+      <div class="d-flex align-items-center gap-3">
+        <div id="user-display" class="text-white text-end"></div>
+        <button id="logout-btn" class="btn btn-sm btn-light hidden" onclick="logout()">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container pb-5">
+    <div id="login-section" class="row g-4 justify-content-center">
+      <div class="col-lg-5">
+        <div class="card p-4 h-100">
+          <h4 class="mb-2">Secure Login</h4>
+          <p class="text-muted">Student, faculty, and admin accounts use the same sign-in form.</p>
+          <div class="mb-3"><input type="text" id="username" class="form-control" placeholder="Username"></div>
+          <div class="mb-3"><input type="password" id="password" class="form-control" placeholder="Password"></div>
+          <button class="btn btn-success w-100" onclick="login()">Sign In</button>
+          <div class="small text-muted mt-3">Demo accounts: <strong>student1</strong>, <strong>faculty1</strong>, <strong>admin1</strong></div>
+          <div id="login-error" class="text-danger mt-3"></div>
         </div>
-
-        <div id="dashboard-section" class="hidden">
-            <ul class="nav nav-tabs mb-4">
-                <li class="nav-item" id="nav-courses">
-                    <a class="nav-link active" href="#" onclick="switchTab('courses')">Available Courses</a>
-                </li>
-                <li class="nav-item" id="nav-grades">
-                    <a class="nav-link" href="#" onclick="switchTab('grades')">My Grades</a>
-                </li>
-                <li class="nav-item hidden" id="nav-faculty">
-                    <a class="nav-link active" href="#" onclick="switchTab('faculty')">Faculty Upload</a>
-                </li>
-                <li class="nav-item hidden" id="nav-students">
-                    <a class="nav-link" href="#" onclick="switchTab('students')">Student List</a>
-                </li>
-            </ul>
-
-            <div id="tab-courses">
-                <div id="course-list" class="row"></div>
-                <div id="course-error" class="alert alert-danger hidden"></div>
-            </div>
-
-            <div id="tab-grades" class="hidden">
-                <h3>Academic Record</h3>
-                <div id="grades-list" class="mt-3"></div>
-                <div id="grade-error" class="alert alert-danger hidden"></div>
-            </div>
-
-            <div id="tab-faculty" class="hidden">
-                <div class="card p-4 bg-light">
-                    <h4>Faculty Grade Upload</h4>
-                    <div class="mb-2">
-                        <input type="number" id="f-student-id" class="form-control" placeholder="Student ID (e.g. 1)">
-                    </div>
-                    <div class="mb-2">
-                        <input type="number" id="f-course-id" class="form-control" placeholder="Course ID (e.g. 1)">
-                    </div>
-                    <div class="mb-2">
-                        <input type="number" id="f-grade" class="form-control" placeholder="Grade (e.g. 4.0)">
-                    </div>
-                    <button class="btn btn-success" onclick="uploadGrade()">Upload Grade</button>
-                </div>
-            </div>
-
-            <div id="tab-students" class="hidden">
-                <h3>Registered Students</h3>
-                <div id="student-list-container" class="mt-3"></div>
-            </div>
+      </div>
+      <div class="col-lg-7">
+        <div class="card p-4 h-100">
+          <h4 class="mb-2">Student Registration</h4>
+          <p class="text-muted">Self-registration creates a student account only.</p>
+          <div class="row g-3">
+            <div class="col-md-6"><input type="text" id="register-username" class="form-control" placeholder="Username"></div>
+            <div class="col-md-6"><input type="text" id="register-question" class="form-control" placeholder="Security question"></div>
+            <div class="col-md-6"><input type="password" id="register-password" class="form-control" placeholder="Password"></div>
+            <div class="col-md-6"><input type="password" id="register-confirm-password" class="form-control" placeholder="Confirm password"></div>
+            <div class="col-12"><input type="text" id="register-answer" class="form-control" placeholder="Security answer"></div>
+          </div>
+          <button class="btn btn-outline-success mt-3" onclick="registerStudent()">Create Student Account</button>
+          <div class="small text-muted mt-3">Password must include 8+ chars, an uppercase letter, a number, and a special character.</div>
+          <div id="register-error" class="text-danger mt-3"></div>
         </div>
-
+      </div>
     </div>
 
-    <script>
-        let currentUser = null;
-        let authToken = null;
+    <div id="dashboard-section" class="hidden">
+      <div class="card p-4 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+          <div>
+            <h3 class="mb-1">Dashboard</h3>
+            <div id="dashboard-meta" class="text-muted"></div>
+          </div>
+          <div id="role-badge" class="badge bg-light text-dark fs-6"></div>
+        </div>
+      </div>
 
-        async function login() {
-            const user = document.getElementById('username').value;
-            const pass = document.getElementById('password').value;
-            
-            try {
-                const res = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: user, password: pass })
-                });
+      <ul class="nav nav-tabs mb-4">
+        <li class="nav-item hidden" id="nav-courses"><a class="nav-link" href="#" onclick="switchTab('courses'); return false;">Courses</a></li>
+        <li class="nav-item hidden" id="nav-enrollments"><a class="nav-link" href="#" onclick="switchTab('enrollments'); return false;">My Enrollments</a></li>
+        <li class="nav-item hidden" id="nav-grades"><a class="nav-link" href="#" onclick="switchTab('grades'); return false;">My Grades</a></li>
+        <li class="nav-item hidden" id="nav-faculty"><a class="nav-link" href="#" onclick="switchTab('faculty'); return false;">Faculty Tools</a></li>
+        <li class="nav-item hidden" id="nav-students"><a class="nav-link" href="#" onclick="switchTab('students'); return false;">Students</a></li>
+        <li class="nav-item hidden" id="nav-admin-users"><a class="nav-link" href="#" onclick="switchTab('admin-users'); return false;">Account Admin</a></li>
+        <li class="nav-item hidden" id="nav-admin-logs"><a class="nav-link" href="#" onclick="switchTab('admin-logs'); return false;">Audit Logs</a></li>
+        <li class="nav-item hidden" id="nav-account"><a class="nav-link" href="#" onclick="switchTab('account'); return false;">Account</a></li>
+      </ul>
 
-                const data = await res.json();
+      <div id="tab-courses" class="hidden">
+        <div id="course-list" class="row g-3"></div>
+        <div id="course-error" class="alert alert-danger hidden mt-3"></div>
+      </div>
 
-                if (res.ok) {
-                    authToken = data.token;
-                    currentUser = data.user;
-                    showDashboard();
-                } else {
-                    document.getElementById('login-error').innerText = data.message;
-                }
-            } catch (err) {
-                document.getElementById('login-error').innerText = "Auth Service is Offline!";
-            }
+      <div id="tab-enrollments" class="hidden">
+        <div class="card p-4">
+          <h4>My Enrollments</h4>
+          <div id="enrollment-list" class="mt-3"></div>
+          <div id="enrollment-error" class="alert alert-danger hidden mt-3 mb-0"></div>
+        </div>
+      </div>
+
+      <div id="tab-grades" class="hidden">
+        <div class="card p-4">
+          <h4>Academic Record</h4>
+          <div id="grades-list" class="mt-3"></div>
+          <div id="grade-error" class="alert alert-danger hidden mt-3 mb-0"></div>
+        </div>
+      </div>
+
+      <div id="tab-faculty" class="hidden">
+        <div class="row g-4">
+          <div class="col-lg-7">
+            <div class="card p-4 h-100">
+              <h4>Assigned Courses</h4>
+              <div id="faculty-course-list" class="mt-3"></div>
+            </div>
+          </div>
+          <div class="col-lg-5">
+            <div class="card p-4 h-100">
+              <h4>Upload or Update Grade</h4>
+              <div class="mb-3"><input type="number" id="f-student-id" class="form-control" placeholder="Student ID"></div>
+              <div class="mb-3"><input type="number" id="f-course-id" class="form-control" placeholder="Course ID"></div>
+              <div class="mb-3"><input type="number" id="f-grade" class="form-control" placeholder="Grade (0.0 - 4.0)" step="0.01" min="0" max="4"></div>
+              <button class="btn btn-success w-100" onclick="uploadGrade()">Submit Grade</button>
+              <div id="faculty-grade-status" class="mt-3"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-students" class="hidden"><div class="card p-4"><h4>Student List</h4><div id="student-list-container" class="mt-3"></div></div></div>
+
+      <div id="tab-admin-users" class="hidden">
+        <div class="row g-4">
+          <div class="col-lg-5">
+            <div class="card p-4 h-100">
+              <h4>Create Admin or Faculty Account</h4>
+              <div class="row g-3 mt-1">
+                <div class="col-12"><input type="text" id="admin-create-username" class="form-control" placeholder="Username"></div>
+                <div class="col-md-6"><input type="password" id="admin-create-password" class="form-control" placeholder="Password"></div>
+                <div class="col-md-6"><input type="password" id="admin-create-confirm-password" class="form-control" placeholder="Confirm password"></div>
+                <div class="col-md-6">
+                  <select id="admin-create-role" class="form-select">
+                    <option value="faculty">Faculty</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div class="col-md-6"><input type="text" id="admin-create-question" class="form-control" placeholder="Security question"></div>
+                <div class="col-12"><input type="text" id="admin-create-answer" class="form-control" placeholder="Security answer"></div>
+              </div>
+              <button class="btn btn-success mt-3 w-100" onclick="createManagedAccount()">Create Account</button>
+              <div id="admin-account-error" class="text-danger mt-3"></div>
+            </div>
+          </div>
+          <div class="col-lg-7">
+            <div class="card p-4 h-100">
+              <h4>Manage Existing Accounts</h4>
+              <div id="account-list-container" class="mt-3"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-admin-logs" class="hidden">
+        <div class="card p-4">
+          <h4>Audit Log Viewer</h4>
+          <div id="audit-log-status" class="text-muted mt-1"></div>
+          <div id="audit-log-container" class="mt-3"></div>
+        </div>
+      </div>
+
+      <div id="tab-account" class="hidden">
+        <div class="row g-4">
+          <div class="col-lg-6">
+            <div class="card p-4 h-100">
+              <h4>Change Password</h4>
+              <p class="text-muted">Current-password confirmation is required.</p>
+              <div class="mb-3"><input type="password" id="current-password" class="form-control" placeholder="Current password"></div>
+              <div class="mb-3"><input type="password" id="new-password" class="form-control" placeholder="New password"></div>
+              <div class="mb-3"><input type="password" id="confirm-new-password" class="form-control" placeholder="Confirm new password"></div>
+              <button class="btn btn-success w-100" onclick="changePassword()">Update Password</button>
+              <div id="account-password-status" class="mt-3"></div>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="card p-4 h-100">
+              <h4>Account Summary</h4>
+              <div id="account-summary" class="mt-3"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let authToken = null;
+    let cachedAccounts = [];
+
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const fmt = (v) => !v ? 'Not available yet' : (Number.isNaN(new Date(v).getTime()) ? v : new Date(v).toLocaleString());
+
+    async function readJson(res) { try { return await res.json(); } catch { return {}; } }
+    async function request(url, options = {}) {
+      const method = options.method || 'GET';
+      const headers = { ...(options.headers || {}) };
+      if (authToken) headers.Authorization = `Bearer ${authToken}`;
+      if (!headers['Content-Type'] && method !== 'GET' && method !== 'HEAD') headers['Content-Type'] = 'application/json';
+      const res = await fetch(url, { ...options, method, headers });
+      const data = await readJson(res);
+      if (!res.ok) {
+        const err = new Error(data.message || 'Request failed');
+        err.status = res.status;
+        err.data = data;
+        throw err;
+      }
+      return data;
+    }
+
+    function logout() { location.reload(); }
+    function navVisible(id, show) { document.getElementById(id).classList.toggle('hidden', !show); }
+    function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text || ''; }
+
+    async function login() {
+      setText('login-error', '');
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      if (!username || !password) return setText('login-error', 'Username and password are required.');
+      try {
+        const data = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+        authToken = data.token; currentUser = data.user; showDashboard();
+      } catch (err) { setText('login-error', err.message || 'Login failed.'); }
+    }
+
+    async function registerStudent() {
+      setText('register-error', '');
+      const username = document.getElementById('register-username').value.trim();
+      const password = document.getElementById('register-password').value;
+      const confirmPassword = document.getElementById('register-confirm-password').value;
+      const securityQuestion = document.getElementById('register-question').value.trim();
+      const securityAnswer = document.getElementById('register-answer').value.trim();
+      if (!username || !password || !confirmPassword || !securityQuestion || !securityAnswer) return setText('register-error', 'All registration fields are required.');
+      if (password !== confirmPassword) return setText('register-error', 'Password confirmation does not match.');
+      try {
+        const data = await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password, securityQuestion, securityAnswer }) });
+        authToken = data.token; currentUser = data.user; showDashboard();
+      } catch (err) { setText('register-error', err.message || 'Registration failed.'); }
+    }
+
+    function renderAccountSummary() {
+      if (!currentUser) return;
+      document.getElementById('account-summary').innerHTML = `
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Username</dt><dd class="col-sm-8">${esc(currentUser.username)}</dd>
+          <dt class="col-sm-4">Role</dt><dd class="col-sm-8 text-capitalize">${esc(currentUser.role)}</dd>
+          <dt class="col-sm-4">Last Login</dt><dd class="col-sm-8">${esc(fmt(currentUser.lastLoginAt))}</dd>
+          <dt class="col-sm-4">Last Failed Login</dt><dd class="col-sm-8">${esc(fmt(currentUser.lastFailedLoginAt))}</dd>
+          <dt class="col-sm-4">Password Updated</dt><dd class="col-sm-8">${esc(fmt(currentUser.passwordChangedAt))}</dd>
+          <dt class="col-sm-4">Security Question</dt><dd class="col-sm-8">${currentUser.securityQuestionConfigured ? 'Configured' : 'Not configured'}</dd>
+        </dl>`;
+    }
+
+    function showDashboard() {
+      document.getElementById('login-section').classList.add('hidden');
+      document.getElementById('dashboard-section').classList.remove('hidden');
+      document.getElementById('logout-btn').classList.remove('hidden');
+      document.getElementById('user-display').innerHTML = `<div><strong>${esc(currentUser.username)}</strong></div><small>${esc(currentUser.role)}</small>`;
+      document.getElementById('dashboard-meta').textContent = currentUser.lastLoginAt ? `Last successful login: ${fmt(currentUser.lastLoginAt)}` : 'Welcome to your first secured session.';
+      document.getElementById('role-badge').textContent = `Role: ${currentUser.role}`;
+      const s = currentUser.role === 'student', f = currentUser.role === 'faculty', a = currentUser.role === 'admin';
+      navVisible('nav-courses', s); navVisible('nav-enrollments', s); navVisible('nav-grades', s); navVisible('nav-faculty', f); navVisible('nav-students', f || a);
+      navVisible('nav-admin-users', a); navVisible('nav-admin-logs', a); navVisible('nav-account', true);
+      renderAccountSummary();
+      switchTab(s ? 'courses' : f ? 'faculty' : a ? 'admin-users' : 'account');
+    }
+
+    function hideAllTabs() {
+      ['courses','enrollments','grades','faculty','students','admin-users','admin-logs','account'].forEach((tab) => {
+        document.getElementById(`tab-${tab}`).classList.add('hidden');
+        const link = document.querySelector(`#nav-${tab} a`);
+        if (link) link.classList.remove('active');
+      });
+    }
+
+    function switchTab(tab) {
+      hideAllTabs();
+      document.getElementById(`tab-${tab}`).classList.remove('hidden');
+      const link = document.querySelector(`#nav-${tab} a`);
+      if (link) link.classList.add('active');
+      if (tab === 'courses') loadCourses();
+      if (tab === 'enrollments') loadEnrollments();
+      if (tab === 'grades') loadGrades();
+      if (tab === 'faculty') loadFacultyCourses();
+      if (tab === 'students') loadStudents();
+      if (tab === 'admin-users') loadAccounts();
+      if (tab === 'admin-logs') loadAuditLogs();
+      if (tab === 'account') renderAccountSummary();
+    }
+
+    async function loadCourses() {
+      const errorBox = document.getElementById('course-error');
+      errorBox.classList.add('hidden'); errorBox.textContent = '';
+      try {
+        const res = await request('/api/courses');
+        const courses = res.data || [];
+        const container = document.getElementById('course-list');
+        if (!courses.length) {
+          container.innerHTML = `<div class="col-12"><div class="empty">You are already enrolled in every available course.</div></div>`;
+          return;
         }
+        container.innerHTML = '';
+        courses.forEach((c) => {
+          container.innerHTML += `
+            <div class="col-md-6 col-xl-4">
+              <div class="card p-4 h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge bg-success">Course ${esc(c.id)}</span>
+                  <small class="text-muted">Capacity: ${esc(c.capacity)}</small>
+                </div>
+                <h5>${esc(c.title)}</h5>
+                <p class="text-muted mb-2">${esc(c.description)}</p>
+                <small class="text-muted d-block mb-3">Faculty: ${esc(c.faculty_username || 'Unassigned')}</small>
+                <button class="btn btn-success mt-auto" onclick="enroll(${Number(c.id)})">Enroll</button>
+              </div>
+            </div>`;
+        });
+      } catch (err) {
+        errorBox.classList.remove('hidden');
+        errorBox.textContent = err.message || 'Course service is unavailable.';
+      }
+    }
 
-        function showDashboard() {
-            document.getElementById('login-section').classList.add('hidden');
-            document.getElementById('dashboard-section').classList.remove('hidden');
-            document.getElementById('logout-btn').classList.remove('hidden');
-            document.getElementById('user-display').innerText = `Welcome, ${currentUser.username} (${currentUser.role})`;
-            
-            if (currentUser.role === 'faculty') {
-                // FACULTY VIEW
-                document.getElementById('nav-faculty').classList.remove('hidden');
-                document.getElementById('nav-students').classList.remove('hidden');
-                document.getElementById('nav-courses').classList.add('hidden');
-                document.getElementById('nav-grades').classList.add('hidden');
-                
-                switchTab('faculty'); 
-            } else {
-                // STUDENT VIEW
-                document.getElementById('nav-faculty').classList.add('hidden');
-                document.getElementById('nav-students').classList.add('hidden');
-                document.getElementById('nav-courses').classList.remove('hidden');
-                document.getElementById('nav-grades').classList.remove('hidden');
-                
-                switchTab('courses');
-                loadCourses();
-            }
+    async function enroll(courseId) {
+      try {
+        const data = await request('/api/courses/enroll', { method: 'POST', body: JSON.stringify({ courseId }) });
+        alert(data.message || 'Enrollment successful.');
+        loadCourses();
+      } catch (err) { alert(err.message || 'Enrollment failed.'); }
+    }
+
+    async function loadEnrollments() {
+      const errorBox = document.getElementById('enrollment-error');
+      errorBox.classList.add('hidden');
+      errorBox.textContent = '';
+      try {
+        const data = await request('/api/courses/enrollments');
+        const list = data.data || [];
+        const container = document.getElementById('enrollment-list');
+        if (!list.length) {
+          container.innerHTML = '<div class="empty">You are not enrolled in any courses yet.</div>';
+          return;
         }
+        let html = `<div class="row g-3">`;
+        list.forEach((c) => {
+          html += `
+            <div class="col-md-6 col-xl-4">
+              <div class="card p-4 h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="badge bg-success">Course ${esc(c.id)}</span>
+                  <small class="text-muted">Capacity: ${esc(c.capacity)}</small>
+                </div>
+                <h5>${esc(c.title)}</h5>
+                <p class="text-muted mb-2">${esc(c.description)}</p>
+                <small class="text-muted d-block">Faculty: ${esc(c.faculty_username || 'Unassigned')}</small>
+                <small class="text-muted d-block mt-2">Enrolled at: ${esc(fmt(c.enrolled_at))}</small>
+              </div>
+            </div>`;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+      } catch (err) {
+        errorBox.classList.remove('hidden');
+        errorBox.textContent = err.message || 'Enrollment view is unavailable.';
+      }
+    }
 
-        function logout() {
-            location.reload();
+    async function loadGrades() {
+      const errorBox = document.getElementById('grade-error');
+      errorBox.classList.add('hidden'); errorBox.textContent = '';
+      try {
+        const data = await request(`/api/grades?studentId=${currentUser.id}`);
+        const list = data.data || [];
+        const container = document.getElementById('grades-list');
+        if (!list.length) {
+          container.innerHTML = '<div class="empty">No grades found.</div>';
+          return;
         }
+        let html = `<table class="table table-hover"><thead><tr class="table-success"><th>Course</th><th>Grade</th></tr></thead><tbody>`;
+        list.forEach((g) => { html += `<tr><td>${esc(g.title)}</td><td><strong>${esc(g.grade)}</strong></td></tr>`; });
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+      } catch (err) {
+        errorBox.classList.remove('hidden');
+        errorBox.textContent = err.message || 'Grade service is unavailable.';
+      }
+    }
 
-        async function loadCourses() {
-            try {
-                const res = await fetch(`/api/courses?studentId=${currentUser.id}`);
-                if (!res.ok) throw new Error("Service Down");
-                
-                const responseData = await res.json();
-                const courses = responseData.data;
-                const nodeName = responseData.node;
-
-                const container = document.getElementById('course-list');
-                container.innerHTML = `<div class="col-12 text-muted mb-2">Served by: ${nodeName}</div>`;
-
-                courses.forEach(c => {
-                    const html = `
-                    <div class="col-md-4 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="badge bg-success">ID: ${c.id}</span>
-                                    <small class="text-muted">Capacity: ${c.capacity}</small>
-                                </div>
-                                <h5 class="card-title">${c.title}</h5>
-                                <p class="card-text">${c.description}</p>
-                                <button class="btn btn-success w-100 mt-2" onclick="enroll(${c.id})">Enroll</button>
-                            </div>
-                        </div>
-                    </div>`;
-                    container.innerHTML += html;
-                });
-            } catch (err) {
-                document.getElementById('course-error').classList.remove('hidden');
-                document.getElementById('course-error').innerText = "Course Catalog Service is temporarily unavailable. Please try again later.";
-            }
+    async function loadFacultyCourses() {
+      const container = document.getElementById('faculty-course-list');
+      container.innerHTML = '<div class="text-muted">Loading assigned courses...</div>';
+      try {
+        const res = await request('/api/courses');
+        const courses = res.data || [];
+        if (!courses.length) {
+          container.innerHTML = '<div class="empty">No courses are assigned to you yet.</div>';
+          return;
         }
+        let html = `<table class="table table-striped"><thead class="table-success"><tr><th>Course ID</th><th>Title</th><th>Capacity</th></tr></thead><tbody>`;
+        courses.forEach((c) => { html += `<tr><td><strong>${esc(c.id)}</strong></td><td>${esc(c.title)}</td><td>${esc(c.capacity)}</td></tr>`; });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+        document.getElementById('f-course-id').value = courses[0].id;
+      } catch (err) { container.innerHTML = `<div class="alert alert-danger mb-0">${esc(err.message || 'Unable to load assigned courses.')}</div>`; }
+    }
 
-        async function enroll(courseId) {
-            try {
-                const res = await fetch('/api/courses/enroll', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ studentId: currentUser.id, courseId: courseId })
-                });
-                
-                const data = await res.json();
-                
-                if (res.ok) {
-                    alert(data.message || "Enrollment Successful!");
-                    loadCourses(); 
-                } else {
-                    console.error("Server Error:", data);
-                    alert("Failed: " + (data.message || "System is in Read-Only Mode"));
-                }
+    async function uploadGrade() {
+      const studentId = document.getElementById('f-student-id').value;
+      const courseId = document.getElementById('f-course-id').value;
+      const grade = document.getElementById('f-grade').value;
+      const box = document.getElementById('faculty-grade-status');
+      box.className = 'mt-3'; box.textContent = '';
+      if (!studentId || !courseId || !grade) {
+        box.className = 'alert alert-danger mt-3 mb-0'; box.textContent = 'Student ID, course ID, and grade are required.'; return;
+      }
+      try {
+        const data = await request('/api/grades', { method: 'POST', body: JSON.stringify({ studentId, courseId, grade }) });
+        box.className = 'alert alert-success mt-3 mb-0'; box.textContent = data.message || 'Grade uploaded successfully.';
+      } catch (err) {
+        box.className = 'alert alert-danger mt-3 mb-0'; box.textContent = err.message || 'Upload failed.';
+      }
+    }
 
-            } catch (err) {
-                console.error(err);
-                alert("Network Error: Service is unreachable.");
-            }
-        }
+    async function loadStudents() {
+      const container = document.getElementById('student-list-container');
+      container.innerHTML = '<div class="text-muted">Loading students...</div>';
+      try {
+        const students = await request('/api/auth/students');
+        if (!students.length) return container.innerHTML = '<div class="empty">No student records are available for your role scope.</div>';
+        let html = `<table class="table table-striped"><thead class="table-success"><tr><th>Student ID</th><th>Username</th><th>Scoped Enrollments</th></tr></thead><tbody>`;
+        students.forEach((s) => { html += `<tr><td><strong>${esc(s.id)}</strong></td><td>${esc(s.username)}</td><td>${esc(s.enrolled_courses)}</td></tr>`; });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch (err) { container.innerHTML = `<div class="alert alert-danger mb-0">${esc(err.message || 'Failed to load student list.')}</div>`; }
+    }
 
-        function switchTab(tab) {
-            document.getElementById('tab-courses').classList.add('hidden');
-            document.getElementById('tab-grades').classList.add('hidden');
-            document.getElementById('tab-faculty').classList.add('hidden');
-            document.getElementById('tab-students').classList.add('hidden');
-            
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('active');
-            });
+    function roleOptions(selectedRole) {
+      return ['student', 'faculty', 'admin'].map((role) => `<option value="${role}" ${selectedRole === role ? 'selected' : ''}>${role}</option>`).join('');
+    }
 
-            document.getElementById('tab-' + tab).classList.remove('hidden');
+    function renderAccountsTable() {
+      const container = document.getElementById('account-list-container');
+      if (!cachedAccounts.length) return container.innerHTML = '<div class="empty">No accounts found.</div>';
+      let html = `<div class="table-responsive"><table class="table table-striped"><thead class="table-success"><tr><th>ID</th><th>Username</th><th>Role</th><th>Last Login</th><th>Security Q?</th><th>Actions</th></tr></thead><tbody>`;
+      cachedAccounts.forEach((a) => {
+        const canDelete = a.id !== currentUser.id && (a.role === 'admin' || a.role === 'faculty');
+        html += `<tr>
+          <td><strong>${esc(a.id)}</strong></td>
+          <td>${esc(a.username)}</td>
+          <td style="min-width:160px;"><select id="account-role-${a.id}" class="form-select form-select-sm">${roleOptions(a.role)}</select></td>
+          <td>${esc(fmt(a.lastLoginAt))}</td>
+          <td>${a.securityQuestionConfigured ? 'Yes' : 'No'}</td>
+          <td class="d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-outline-success" onclick="updateAccountRole(${Number(a.id)})">Save Role</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteAccount(${Number(a.id)})" ${canDelete ? '' : 'disabled'}>Delete</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    }
 
-            if(tab === 'courses') document.querySelector('#nav-courses a').classList.add('active');
-            if(tab === 'grades') document.querySelector('#nav-grades a').classList.add('active');
-            if(tab === 'faculty') document.querySelector('#nav-faculty a').classList.add('active');
-            if(tab === 'students') document.querySelector('#nav-students a').classList.add('active');
+    async function loadAccounts() {
+      document.getElementById('account-list-container').innerHTML = '<div class="text-muted">Loading accounts...</div>';
+      try { cachedAccounts = await request('/api/auth/accounts'); renderAccountsTable(); }
+      catch (err) { document.getElementById('account-list-container').innerHTML = `<div class="alert alert-danger mb-0">${esc(err.message || 'Unable to load accounts.')}</div>`; }
+    }
 
-            if (tab === 'grades') loadGrades();
-            if (tab === 'courses') loadCourses();
-            if (tab === 'students') loadStudents();
-        }
+    async function createManagedAccount() {
+      setText('admin-account-error', '');
+      const username = document.getElementById('admin-create-username').value.trim();
+      const password = document.getElementById('admin-create-password').value;
+      const confirmPassword = document.getElementById('admin-create-confirm-password').value;
+      const role = document.getElementById('admin-create-role').value;
+      const securityQuestion = document.getElementById('admin-create-question').value.trim();
+      const securityAnswer = document.getElementById('admin-create-answer').value.trim();
+      if (!username || !password || !confirmPassword || !role || !securityQuestion || !securityAnswer) return setText('admin-account-error', 'Every field is required.');
+      if (password !== confirmPassword) return setText('admin-account-error', 'Password confirmation does not match.');
+      try {
+        const data = await request('/api/auth/accounts', { method: 'POST', body: JSON.stringify({ username, password, role, securityQuestion, securityAnswer }) });
+        alert(data.message || 'Account created successfully.');
+        ['admin-create-username','admin-create-password','admin-create-confirm-password','admin-create-question','admin-create-answer'].forEach((id) => document.getElementById(id).value = '');
+        loadAccounts();
+      } catch (err) { setText('admin-account-error', err.message || 'Unable to create account.'); }
+    }
 
-        async function loadGrades() {
-            try {
-                const res = await fetch(`/api/grades?studentId=${currentUser.id}`);
-                if (!res.ok) throw new Error("Service Down");
+    async function updateAccountRole(accountId) {
+      const role = document.getElementById(`account-role-${accountId}`).value;
+      try {
+        const data = await request(`/api/auth/accounts/${accountId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
+        alert(data.message || 'Role updated successfully.');
+        loadAccounts();
+      } catch (err) { alert(err.message || 'Unable to update role.'); }
+    }
 
-                const data = await res.json();
-                const container = document.getElementById('grades-list');
-                
-                if (data.data.length === 0) {
-                    container.innerHTML = "<p>No grades found.</p>";
-                    return;
-                }
+    async function deleteAccount(accountId) {
+      if (!confirm('Delete this privileged account?')) return;
+      try {
+        const data = await request(`/api/auth/accounts/${accountId}`, { method: 'DELETE' });
+        alert(data.message || 'Account deleted successfully.');
+        loadAccounts();
+      } catch (err) { alert(err.message || 'Unable to delete account.'); }
+    }
 
-                let html = `<table class="table table-hover"><thead><tr class="table-success"><th>Course</th><th>Grade</th></tr></thead><tbody>`;
-                data.data.forEach(g => {
-                    html += `<tr><td>${g.title}</td><td><strong>${g.grade}</strong></td></tr>`;
-                });
-                html += `</tbody></table><small class="text-muted">Served by: ${data.node}</small>`;
-                container.innerHTML = html;
+    async function loadAuditLogs() {
+      document.getElementById('audit-log-status').textContent = 'Loading audit logs...';
+      document.getElementById('audit-log-container').innerHTML = '';
+      try {
+        const logs = await request('/api/auth/audit-logs');
+        document.getElementById('audit-log-status').textContent = `${logs.length} log entries loaded.`;
+        if (!logs.length) return document.getElementById('audit-log-container').innerHTML = '<div class="empty">No audit events have been recorded yet.</div>';
+        let html = `<div class="table-responsive"><table class="table table-striped"><thead class="table-success"><tr><th>ID</th><th>Event</th><th>User ID</th><th>IP Address</th><th>Details</th><th>Created At</th></tr></thead><tbody>`;
+        logs.forEach((log) => { html += `<tr><td>${esc(log.id)}</td><td>${esc(log.event_type)}</td><td>${esc(log.user_id)}</td><td>${esc(log.ip_address || 'N/A')}</td><td>${esc(log.details || '')}</td><td>${esc(fmt(log.created_at))}</td></tr>`; });
+        html += '</tbody></table></div>';
+        document.getElementById('audit-log-container').innerHTML = html;
+      } catch (err) {
+        document.getElementById('audit-log-status').textContent = err.message || 'Unable to load audit logs.';
+        document.getElementById('audit-log-container').innerHTML = '<div class="alert alert-warning mb-0">This admin-only viewer is ready and will populate once audit logging is available.</div>';
+      }
+    }
 
-            } catch (err) {
-                document.getElementById('grade-error').classList.remove('hidden');
-                document.getElementById('grade-error').innerText = "Grade Service is temporarily unavailable.";
-            }
-        }
-
-        async function uploadGrade() {
-            const studentId = document.getElementById('f-student-id').value;
-            const courseId = document.getElementById('f-course-id').value;
-            const grade = document.getElementById('f-grade').value;
-
-            try {
-                const res = await fetch('/api/grades', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ studentId, courseId, grade })
-                });
-                const data = await res.json();
-                alert(data.message);
-            } catch (err) {
-                alert("Upload failed. Grade Service might be down.");
-            }
-        }
-
-        async function loadStudents() {
-            try {
-                const res = await fetch('/api/auth/students');
-                const students = await res.json();
-                
-                const container = document.getElementById('student-list-container');
-                let html = `
-                <table class="table table-striped">
-                    <thead class="table-success">
-                        <tr>
-                            <th>Student ID</th>
-                            <th>Username</th>
-                            <th>Enrolled Courses</th> </tr>
-                    </thead>
-                    <tbody>`;
-                
-                students.forEach(s => {
-                    html += `
-                        <tr>
-                            <td><strong>${s.id}</strong></td>
-                            <td>${s.username}</td>
-                            <td>${s.enrolled_courses}</td>
-                        </tr>`;
-                });
-                
-                html += `</tbody></table>`;
-                container.innerHTML = html;
-            } catch (err) {
-                alert("Failed to load student list.");
-            }
-        }
-        
-    </script>
+    async function changePassword() {
+      const currentPassword = document.getElementById('current-password').value;
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-new-password').value;
+      const box = document.getElementById('account-password-status');
+      box.className = 'mt-3'; box.textContent = '';
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        box.className = 'alert alert-danger mt-3 mb-0'; box.textContent = 'Current password, new password, and confirmation are required.'; return;
+      }
+      if (newPassword !== confirmPassword) {
+        box.className = 'alert alert-danger mt-3 mb-0'; box.textContent = 'New password confirmation does not match.'; return;
+      }
+      try {
+        const data = await request('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+        currentUser = data.user; renderAccountSummary();
+        box.className = 'alert alert-success mt-3 mb-0'; box.textContent = data.message || 'Password changed successfully.';
+        ['current-password','new-password','confirm-new-password'].forEach((id) => document.getElementById(id).value = '');
+      } catch (err) {
+        box.className = 'alert alert-danger mt-3 mb-0'; box.textContent = err.message || 'Unable to change password.';
+      }
+    }
+  </script>
 </body>
 </html>
