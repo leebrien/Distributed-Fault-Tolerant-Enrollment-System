@@ -352,4 +352,14 @@ app.get('/api/auth/students', async (req, res) => {
     }
 });
 
-app.listen(3000, () => console.log('Auth Service running on port 3000'));
+async function bootstrap() {
+    await connectDB();
+    // Run startup migrations before accepting auth traffic.
+    await ensureAuthSchema();
+    app.listen(PORT, () => console.log(`Auth Service running on port ${PORT}`));
+}
+
+bootstrap().catch((err) => {
+    console.error("Auth-Service bootstrap failed.", err);
+    process.exit(1);
+});
