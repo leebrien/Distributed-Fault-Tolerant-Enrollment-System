@@ -104,7 +104,224 @@ app.post('/api/auth/register', validateRegister, async (req, res) => {
   // TODO (FRANZ)
 });
 
-// list students and their courses for faculty
+app.post('/api/auth/password-reset', async (req, res) => {
+    const { username, securityAnswer, newPassword } = req.body;
+
+    if (!username || !securityAnswer || !newPassword) {
+        return res.status(400).json({
+            message: "Username, security answer, and new password are required"
+        });
+    }
+
+    if (!validatePasswordComplexity(newPassword)) {
+        return sendPasswordComplexityError(res);
+    }
+
+    try {
+        const client = await db.connectWriteClient();
+
+        try {
+            await client.query('BEGIN');
+
+            const userResult = await client.query(
+                'SELECT * FROM students WHERE username = $1 FOR UPDATE',
+                [username]
+            );
+            const user = userResult.rows[0];
+
+            if (!user) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ message: "User not found" });
+            }
+
+            if (!user.security_question || !user.security_answer_hash) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ message: "Security question is not configured for this account" });
+            }
+
+            const answerMatches = await bcrypt.compare(securityAnswer, user.security_answer_hash);
+
+            if (!answerMatches) {
+                await client.query('ROLLBACK');
+                return res.status(401).json({ message: "Security answer is incorrect" });
+            }
+
+            const passwordUpdate = await updatePasswordForUser(client, user, newPassword);
+
+            if (!passwordUpdate.ok) {
+                await client.query('ROLLBACK');
+                return res.status(passwordUpdate.status).json(passwordUpdate.body);
+            }
+
+            await client.query('COMMIT');
+
+            return res.json({
+                message: "Password reset successful",
+                user: sanitizeUser(passwordUpdate.user)
+            });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Password reset failed" });
+    }
+});
+
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current password and new password are required" });
+    }
+
+    if (!validatePasswordComplexity(newPassword)) {
+        return sendPasswordComplexityError(res);
+    }
+
+    try {
+        const client = await db.connectWriteClient();
+
+        try {
+            await client.query('BEGIN');
+
+            const userResult = await client.query(
+                'SELECT * FROM students WHERE id = $1 FOR UPDATE',
+                [req.user.id]
+            );
+            const user = userResult.rows[0];
+
+            if (!user) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ message: "User not found" });
+            }
+
+            const passwordMatches = await bcrypt.compare(currentPassword, user.password);
+
+            if (!passwordMatches) {
+                await client.query('ROLLBACK');
+                return res.status(401).json({ message: "Current password is incorrect" });
+            }
+
+            const passwordUpdate = await updatePasswordForUser(client, user, newPassword);
+
+            if (!passwordUpdate.ok) {
+                await client.query('ROLLBACK');
+                return res.status(passwordUpdate.status).json(passwordUpdate.body);
+            }
+
+            await client.query('COMMIT');
+
+            return res.json({
+                message: "Password changed successfully",
+                user: sanitizeUser(passwordUpdate.user)
+            });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Password change failed" });
+    }
+});
+
+app.post('/api/auth/security-question', authenticateToken, async (req, res) => {
+    const { currentPassword, securityQuestion, securityAnswer } = req.body;
+
+    if (!currentPassword || !securityQuestion || !securityAnswer) {
+        return res.status(400).json({
+            message: "Current password, security question, and security answer are required"
+        });
+    }
+
+    try {
+        const user = await fetchUserById(req.user.id, true);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const passwordMatches = await bcrypt.compare(currentPassword, user.password);
+
+        if (!passwordMatches) {
+            return res.status(401).json({ message: "Current password is incorrect" });
+        }
+
+        const securityAnswerHash = await bcrypt.hash(securityAnswer, BCRYPT_ROUNDS);
+        const updateResult = await db.writeQuery(
+            `UPDATE students
+             SET security_question = $2,
+                 security_answer_hash = $3
+             WHERE id = $1
+             RETURNING *`,
+            [user.id, securityQuestion.trim(), securityAnswerHash]
+        );
+
+        return res.json({
+            message: "Security question updated successfully",
+            user: sanitizeUser(updateResult.rows[0])
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Unable to update security question" });
+    }
+});
+
+async function handleVerifyPassword(req, res) {
+    const { password } = req.body;
+
+    if (!password) {
+        return res.status(400).json({ message: "Password is required" });
+    }
+
+    try {
+        let user = await fetchUserById(req.user.id, true);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        user = await clearExpiredLock(user);
+
+        if (isAccountLocked(user)) {
+            return res.status(423).json({
+                message: "Account is temporarily locked",
+                lockedUntil: formatTimestamp(user.locked_until)
+            });
+        }
+
+        const passwordMatches = await bcrypt.compare(password, user.password);
+
+        if (!passwordMatches) {
+            return res.status(401).json({ message: "Password verification failed" });
+        }
+
+        const challengeToken = createAuthToken(
+            user,
+            REAUTH_TOKEN_TTL,
+            { purpose: 'reauth' }
+        );
+
+        return res.json({
+            message: "Password verified",
+            challengeToken,
+            expiresIn: REAUTH_TOKEN_TTL
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Unable to verify password" });
+    }
+}
+
+app.post('/api/auth/verify-password', authenticateToken, handleVerifyPassword);
+app.post('/api/auth/re-authenticate', authenticateToken, handleVerifyPassword);
+
 app.get('/api/auth/students', async (req, res) => {
     try {
         const query = `
