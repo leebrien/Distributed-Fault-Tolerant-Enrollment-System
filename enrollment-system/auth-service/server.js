@@ -15,6 +15,7 @@ const LOCKOUT_MINUTES = 15;
 const PASSWORD_HISTORY_LIMIT = 5;
 const MIN_PASSWORD_AGE_MS = 24 * 60 * 60 * 1000;
 const REAUTH_TOKEN_TTL = "10m";
+// Keep shared auth policy values centralized so login, reset, and re-auth flows stay aligned.
 const PASSWORD_COMPLEXITY_MESSAGE =
     "Password must be at least 8 characters long and include one uppercase letter, one digit, and one special character.";
 
