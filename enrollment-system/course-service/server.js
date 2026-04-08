@@ -1,3 +1,4 @@
+const { checkValidation, validateEnroll } = require('./middleware/validate');
 const express = require('express');
 const { Pool } = require('pg');
 const app = express();
@@ -85,7 +86,10 @@ app.get('/api/courses', async (req, res) => {
 });
 
 // Enroll a student (Primary only)
-app.post('/api/courses/enroll', async (req, res) => {
+app.post('/api/courses/enroll', validateEnroll, async (req, res) => {
+    const invalid = checkValidation(req, res);
+    if (invalid) return;
+    
     const { studentId, courseId } = req.body;
     
     try {
