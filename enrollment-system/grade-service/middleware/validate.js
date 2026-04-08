@@ -69,7 +69,7 @@ const validateGrade = [
 // Grade query (GET request uses query params, not body)
 const validateGradeQuery = [
   query('studentId')
-    .notEmpty().withMessage('Student ID is required.')
+    .optional()
     .isInt({ min: 1 }).withMessage('Student ID must be a positive integer.'),
 ];
 

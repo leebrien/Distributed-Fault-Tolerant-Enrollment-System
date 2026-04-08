@@ -2,19 +2,23 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
+const { ROLES, SECRET_KEY, normalizeRole, verifyToken } = require('../shared/auth');
 
 const app = express();
 
 app.use(express.json());
 
 const PORT = 3000;
-const SECRET_KEY = "supersecretdistributedsystemkey";
 const BCRYPT_ROUNDS = 10;
 const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_MINUTES = 15;
 const PASSWORD_HISTORY_LIMIT = 5;
 const MIN_PASSWORD_AGE_MS = 24 * 60 * 60 * 1000;
 const REAUTH_TOKEN_TTL = "10m";
+const BOOTSTRAP_RETRIES = 15;
+const BOOTSTRAP_DELAY_MS = 3000;
+const ALL_ROLES = [ROLES.STUDENT, ROLES.FACULTY, ROLES.ADMIN];
+const MANAGED_ACCOUNT_ROLES = [ROLES.FACULTY, ROLES.ADMIN];
 const PASSWORD_COMPLEXITY_MESSAGE =
     "Password must be at least 8 characters long and include one uppercase letter, one digit, and one special character.";
 
@@ -98,6 +102,10 @@ function formatTimestamp(value) {
     return value ? new Date(value).toISOString() : null;
 }
 
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function validatePasswordComplexity(password) {
     return (
         typeof password === 'string' &&
@@ -130,6 +138,14 @@ function sendPasswordComplexityError(res) {
     return res.status(400).json({ message: PASSWORD_COMPLEXITY_MESSAGE });
 }
 
+function isValidRole(role) {
+    return ALL_ROLES.includes(normalizeRole(role));
+}
+
+function isManagedAccountRole(role) {
+    return MANAGED_ACCOUNT_ROLES.includes(normalizeRole(role));
+}
+
 function createAuthToken(user, expiresIn = '1h', extraPayload = {}) {
     return jwt.sign(
         {
@@ -141,22 +157,6 @@ function createAuthToken(user, expiresIn = '1h', extraPayload = {}) {
         SECRET_KEY,
         { expiresIn }
     );
-}
-
-function authenticateToken(req, res, next) {
-    const authHeader = req.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-
-    if (!token) {
-        return res.status(401).json({ message: "Missing bearer token" });
-    }
-
-    try {
-        req.user = jwt.verify(token, SECRET_KEY);
-        next();d
-    } catch (err) {
-        return res.status(401).json({ message: "Invalid or expired token" });
-    }
 }
 
 async function ensurePasswordNotReused(client, studentId, candidatePassword, currentPasswordHash) {
@@ -223,6 +223,45 @@ async function fetchUserById(id, forWrite = false) {
     return result.rows[0] || null;
 }
 
+async function seedDefaultAdminAccount(client) {
+    const adminCountResult = await client.query(
+        `SELECT COUNT(*)::INT AS admin_count
+         FROM students
+         WHERE role = $1`,
+        [ROLES.ADMIN]
+    );
+
+    if (adminCountResult.rows[0].admin_count > 0) {
+        return;
+    }
+
+    const passwordHash = await bcrypt.hash('password123', BCRYPT_ROUNDS);
+    const securityAnswerHash = await bcrypt.hash('admin', BCRYPT_ROUNDS);
+
+    const insertResult = await client.query(
+        `INSERT INTO students (
+            username,
+            password,
+            role,
+            security_question,
+            security_answer_hash,
+            password_changed_at
+         )
+         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP - INTERVAL '2 days')
+         ON CONFLICT (username) DO NOTHING
+         RETURNING id, password`,
+        ['admin1', passwordHash, ROLES.ADMIN, 'What account type is this?', securityAnswerHash]
+    );
+
+    if (insertResult.rows.length > 0) {
+        await client.query(
+            `INSERT INTO password_history (student_id, password_hash)
+             VALUES ($1, $2)`,
+            [insertResult.rows[0].id, insertResult.rows[0].password]
+        );
+    }
+}
+
 async function ensureAuthSchema() {
     const client = await db.connectWriteClient();
 
@@ -241,6 +280,11 @@ async function ensureAuthSchema() {
         await client.query(`
             ALTER TABLE students
                 ALTER COLUMN password TYPE VARCHAR(255)
+        `);
+
+        await client.query(`
+            ALTER TABLE students
+                ALTER COLUMN role SET DEFAULT 'student'
         `);
 
         await client.query(`
@@ -316,6 +360,8 @@ async function ensureAuthSchema() {
                 ALTER COLUMN password_changed_at SET NOT NULL
         `);
 
+        await seedDefaultAdminAccount(client);
+
         await client.query('COMMIT');
         console.log("Auth-Service: Schema migration complete.");
     } catch (err) {
@@ -376,13 +422,61 @@ async function updatePasswordForUser(client, user, newPassword, options = {}) {
     };
 }
 
+async function createUserAccount(client, { username, password, role, securityQuestion, securityAnswer }) {
+    const normalizedRole = normalizeRole(role);
+    const existingUserResult = await client.query(
+        'SELECT id FROM students WHERE username = $1 FOR UPDATE',
+        [username]
+    );
+
+    if (existingUserResult.rows.length > 0) {
+        return {
+            ok: false,
+            status: 409,
+            body: { message: "Username already exists" }
+        };
+    }
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const securityAnswerHash = await bcrypt.hash(securityAnswer, BCRYPT_ROUNDS);
+    const insertResult = await client.query(
+        `INSERT INTO students (
+            username,
+            password,
+            role,
+            security_question,
+            security_answer_hash,
+            password_changed_at
+         )
+         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+         RETURNING *`,
+        [username, passwordHash, normalizedRole, securityQuestion.trim(), securityAnswerHash]
+    );
+
+    await client.query(
+        `INSERT INTO password_history (student_id, password_hash)
+         VALUES ($1, $2)`,
+        [insertResult.rows[0].id, passwordHash]
+    );
+
+    return {
+        ok: true,
+        user: insertResult.rows[0]
+    };
+}
+
 app.post('/api/auth/register', async (req, res) => {
-    const { username, password, role = 'student', securityQuestion, securityAnswer } = req.body;
+    const { username, password, role, securityQuestion, securityAnswer } = req.body;
+    const requestedRole = normalizeRole(role || ROLES.STUDENT);
 
     if (!username || !password || !securityQuestion || !securityAnswer) {
         return res.status(400).json({
             message: "Username, password, security question, and security answer are required"
         });
+    }
+
+    if (requestedRole !== ROLES.STUDENT) {
+        return res.status(403).json({ message: "Public registration may only create student accounts" });
     }
 
     if (!validatePasswordComplexity(password)) {
@@ -395,41 +489,22 @@ app.post('/api/auth/register', async (req, res) => {
         try {
             await client.query('BEGIN');
 
-            const existingUserResult = await client.query(
-                'SELECT id FROM students WHERE username = $1 FOR UPDATE',
-                [username]
-            );
+            const accountCreation = await createUserAccount(client, {
+                username,
+                password,
+                role: ROLES.STUDENT,
+                securityQuestion,
+                securityAnswer
+            });
 
-            if (existingUserResult.rows.length > 0) {
+            if (!accountCreation.ok) {
                 await client.query('ROLLBACK');
-                return res.status(409).json({ message: "Username already exists" });
+                return res.status(accountCreation.status).json(accountCreation.body);
             }
-
-            const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-            const securityAnswerHash = await bcrypt.hash(securityAnswer, BCRYPT_ROUNDS);
-            const insertResult = await client.query(
-                `INSERT INTO students (
-                    username,
-                    password,
-                    role,
-                    security_question,
-                    security_answer_hash,
-                    password_changed_at
-                 )
-                 VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-                 RETURNING *`,
-                [username, passwordHash, role, securityQuestion.trim(), securityAnswerHash]
-            );
-
-            await client.query(
-                `INSERT INTO password_history (student_id, password_hash)
-                 VALUES ($1, $2)`,
-                [insertResult.rows[0].id, passwordHash]
-            );
 
             await client.query('COMMIT');
 
-            const user = insertResult.rows[0];
+            const user = accountCreation.user;
             const token = createAuthToken(user);
 
             return res.status(201).json({
@@ -621,7 +696,7 @@ app.post('/api/auth/password-reset', async (req, res) => {
     }
 });
 
-app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+app.post('/api/auth/change-password', verifyToken(), async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
@@ -681,7 +756,7 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/auth/security-question', authenticateToken, async (req, res) => {
+app.post('/api/auth/security-question', verifyToken(), async (req, res) => {
     const { currentPassword, securityQuestion, securityAnswer } = req.body;
 
     if (!currentPassword || !securityQuestion || !securityAnswer) {
@@ -769,25 +844,293 @@ async function handleVerifyPassword(req, res) {
     }
 }
 
-app.post('/api/auth/verify-password', authenticateToken, handleVerifyPassword);
-app.post('/api/auth/re-authenticate', authenticateToken, handleVerifyPassword);
+app.post('/api/auth/verify-password', verifyToken(), handleVerifyPassword);
+app.post('/api/auth/re-authenticate', verifyToken(), handleVerifyPassword);
 
-app.get('/api/auth/students', async (req, res) => {
+app.get('/api/auth/accounts', verifyToken(ROLES.ADMIN), async (req, res) => {
     try {
-        const query = `
-            SELECT s.id, s.username,
-                   COALESCE(
-                       STRING_AGG(CONCAT(c.title, ' (ID: ', c.id, ')'), ', '),
-                       'None'
-                   ) AS enrolled_courses
-            FROM students s
-            LEFT JOIN enrollments e ON s.id = e.student_id
-            LEFT JOIN courses c ON e.course_id = c.id
-            WHERE s.role = 'student'
-            GROUP BY s.id, s.username
-            ORDER BY s.id ASC;
-        `;
-        const result = await db.query(query);
+        const result = await db.query(
+            `SELECT id,
+                    username,
+                    role,
+                    failed_attempts,
+                    locked_until,
+                    last_login_at,
+                    last_failed_login_at,
+                    password_changed_at,
+                    security_question,
+                    security_answer_hash
+             FROM students
+             ORDER BY role DESC, username ASC`
+        );
+
+        return res.json(result.rows.map(sanitizeUser));
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Database error" });
+    }
+});
+
+app.post('/api/auth/accounts', verifyToken(ROLES.ADMIN), async (req, res) => {
+    const { username, password, role, securityQuestion, securityAnswer } = req.body;
+    const normalizedRole = normalizeRole(role);
+
+    if (!username || !password || !role || !securityQuestion || !securityAnswer) {
+        return res.status(400).json({
+            message: "Username, password, role, security question, and security answer are required"
+        });
+    }
+
+    if (!isManagedAccountRole(normalizedRole)) {
+        return res.status(400).json({ message: "Admins may only create admin or faculty accounts" });
+    }
+
+    if (!validatePasswordComplexity(password)) {
+        return sendPasswordComplexityError(res);
+    }
+
+    try {
+        const client = await db.connectWriteClient();
+
+        try {
+            await client.query('BEGIN');
+
+            const accountCreation = await createUserAccount(client, {
+                username,
+                password,
+                role: normalizedRole,
+                securityQuestion,
+                securityAnswer
+            });
+
+            if (!accountCreation.ok) {
+                await client.query('ROLLBACK');
+                return res.status(accountCreation.status).json(accountCreation.body);
+            }
+
+            await client.query('COMMIT');
+
+            return res.status(201).json({
+                message: "Account created successfully",
+                user: sanitizeUser(accountCreation.user)
+            });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Unable to create account" });
+    }
+});
+
+app.patch('/api/auth/accounts/:id/role', verifyToken(ROLES.ADMIN), async (req, res) => {
+    const accountId = Number.parseInt(req.params.id, 10);
+    const nextRole = normalizeRole(req.body.role);
+
+    if (!Number.isInteger(accountId) || accountId <= 0) {
+        return res.status(400).json({ message: "Account ID must be a positive integer" });
+    }
+
+    if (!isValidRole(nextRole)) {
+        return res.status(400).json({ message: "Role must be student, faculty, or admin" });
+    }
+
+    try {
+        const client = await db.connectWriteClient();
+
+        try {
+            await client.query('BEGIN');
+
+            const userResult = await client.query(
+                'SELECT * FROM students WHERE id = $1 FOR UPDATE',
+                [accountId]
+            );
+            const user = userResult.rows[0];
+
+            if (!user) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ message: "User not found" });
+            }
+
+            if (user.id === req.user.id && nextRole !== ROLES.ADMIN) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ message: "You cannot remove your own admin role" });
+            }
+
+            if (user.role === ROLES.ADMIN && nextRole !== ROLES.ADMIN) {
+                const adminCountResult = await client.query(
+                    `SELECT COUNT(*)::INT AS admin_count
+                     FROM students
+                     WHERE role = $1`,
+                    [ROLES.ADMIN]
+                );
+
+                if (adminCountResult.rows[0].admin_count <= 1) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ message: "At least one admin account must remain" });
+                }
+            }
+
+            const updateResult = await client.query(
+                `UPDATE students
+                 SET role = $2
+                 WHERE id = $1
+                 RETURNING *`,
+                [accountId, nextRole]
+            );
+
+            await client.query('COMMIT');
+
+            return res.json({
+                message: "Role updated successfully",
+                user: sanitizeUser(updateResult.rows[0])
+            });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Unable to update role" });
+    }
+});
+
+app.delete('/api/auth/accounts/:id', verifyToken(ROLES.ADMIN), async (req, res) => {
+    const accountId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(accountId) || accountId <= 0) {
+        return res.status(400).json({ message: "Account ID must be a positive integer" });
+    }
+
+    if (accountId === req.user.id) {
+        return res.status(400).json({ message: "You cannot delete your own account" });
+    }
+
+    try {
+        const client = await db.connectWriteClient();
+
+        try {
+            await client.query('BEGIN');
+
+            const userResult = await client.query(
+                'SELECT * FROM students WHERE id = $1 FOR UPDATE',
+                [accountId]
+            );
+            const user = userResult.rows[0];
+
+            if (!user) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ message: "User not found" });
+            }
+
+            if (!isManagedAccountRole(user.role)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ message: "Only admin and faculty accounts may be deleted here" });
+            }
+
+            if (user.role === ROLES.ADMIN) {
+                const adminCountResult = await client.query(
+                    `SELECT COUNT(*)::INT AS admin_count
+                     FROM students
+                     WHERE role = $1`,
+                    [ROLES.ADMIN]
+                );
+
+                if (adminCountResult.rows[0].admin_count <= 1) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ message: "At least one admin account must remain" });
+                }
+            }
+
+            await client.query('DELETE FROM students WHERE id = $1', [accountId]);
+            await client.query('COMMIT');
+
+            return res.json({ message: "Account deleted successfully" });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Unable to delete account" });
+    }
+});
+
+app.get('/api/auth/audit-logs', verifyToken(ROLES.ADMIN), async (req, res) => {
+    try {
+        const tableResult = await db.query(`SELECT to_regclass('public.audit_logs') AS table_name`);
+
+        if (!tableResult.rows[0].table_name) {
+            return res.status(503).json({ message: "Audit log viewer will be available after audit logging is implemented" });
+        }
+
+        const result = await db.query(
+            `SELECT id, user_id, event_type, ip_address, details, created_at
+             FROM audit_logs
+             ORDER BY created_at DESC
+             LIMIT 100`
+        );
+
+        return res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Unable to load audit logs" });
+    }
+});
+
+app.get('/api/auth/students', verifyToken([ROLES.FACULTY, ROLES.ADMIN]), async (req, res) => {
+    try {
+        let query;
+        let params = [];
+
+        if (req.user.role === ROLES.FACULTY) {
+            query = `
+                SELECT s.id,
+                       s.username,
+                       COALESCE(
+                           STRING_AGG(CONCAT(c.title, ' (ID: ', c.id, ')'), ', ' ORDER BY c.id),
+                           'None'
+                       ) AS enrolled_courses
+                FROM students s
+                LEFT JOIN enrollments e ON s.id = e.student_id
+                LEFT JOIN courses c ON e.course_id = c.id AND c.faculty_id = $1
+                WHERE s.role = 'student'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM enrollments se
+                      JOIN courses sc ON sc.id = se.course_id
+                      WHERE se.student_id = s.id
+                        AND sc.faculty_id = $1
+                  )
+                GROUP BY s.id, s.username
+                ORDER BY s.id ASC;
+            `;
+            params = [req.user.id];
+        } else {
+            query = `
+                SELECT s.id,
+                       s.username,
+                       COALESCE(
+                           STRING_AGG(CONCAT(c.title, ' (ID: ', c.id, ')'), ', ' ORDER BY c.id),
+                           'None'
+                       ) AS enrolled_courses
+                FROM students s
+                LEFT JOIN enrollments e ON s.id = e.student_id
+                LEFT JOIN courses c ON e.course_id = c.id
+                WHERE s.role = 'student'
+                GROUP BY s.id, s.username
+                ORDER BY s.id ASC;
+            `;
+        }
+
+        const result = await db.query(query, params);
         return res.json(result.rows);
     } catch (err) {
         console.error(err);
@@ -796,9 +1139,27 @@ app.get('/api/auth/students', async (req, res) => {
 });
 
 async function bootstrap() {
-    await connectDB();
-    await ensureAuthSchema();
-    app.listen(PORT, () => console.log(`Auth Service running on port ${PORT}`));
+    for (let attempt = 1; attempt <= BOOTSTRAP_RETRIES; attempt += 1) {
+        try {
+            await connectDB();
+            await ensureAuthSchema();
+            app.listen(PORT, () => console.log(`Auth Service running on port ${PORT}`));
+            return;
+        } catch (err) {
+            activePool = null;
+            activePoolRole = null;
+            console.error(
+                `Auth-Service bootstrap attempt ${attempt}/${BOOTSTRAP_RETRIES} failed.`,
+                err.message
+            );
+
+            if (attempt === BOOTSTRAP_RETRIES) {
+                throw err;
+            }
+
+            await delay(BOOTSTRAP_DELAY_MS);
+        }
+    }
 }
 
 bootstrap().catch((err) => {
