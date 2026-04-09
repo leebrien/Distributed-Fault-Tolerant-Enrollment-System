@@ -1,4 +1,4 @@
-const { checkValidation, validateEnroll } = require('./middleware/validate');
+const { checkValidation, validateCreateCourse, validateEnroll } = require('./middleware/validate');
 const express = require('express');
 const { Pool } = require('pg');
 const { ROLES, verifyToken } = require('../shared/auth');
@@ -168,6 +168,67 @@ app.get('/api/courses', verifyToken(), async (req, res) => {
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: 'Database error' });
+    }
+});
+
+app.post('/api/courses', verifyToken(ROLES.ADMIN), validateCreateCourse, async (req, res) => {
+    const invalid = checkValidation(req, res);
+    if (invalid) {
+        return;
+    }
+
+    const title = req.body.title.trim();
+    const description = typeof req.body.description === 'string' ? req.body.description.trim() : '';
+    const capacity = Number.parseInt(req.body.capacity, 10);
+    const facultyId = req.body.facultyId === null || typeof req.body.facultyId === 'undefined'
+        ? null
+        : Number.parseInt(req.body.facultyId, 10);
+
+    try {
+        const client = await pool.connectWriteClient();
+
+        try {
+            await client.query('BEGIN');
+
+            if (facultyId !== null) {
+                const facultyResult = await client.query(
+                    `SELECT id
+                     FROM students
+                     WHERE id = $1 AND role = $2`,
+                    [facultyId, ROLES.FACULTY]
+                );
+
+                if (facultyResult.rows.length === 0) {
+                    await client.query('ROLLBACK');
+                    return res.status(404).json({ message: 'Faculty account not found' });
+                }
+            }
+
+            const insertResult = await client.query(
+                `INSERT INTO courses (title, description, capacity, faculty_id)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING id, title, description, capacity, faculty_id`,
+                [title, description, capacity, facultyId]
+            );
+
+            await client.query('COMMIT');
+
+            return res.status(201).json({
+                message: 'Course created successfully',
+                course: insertResult.rows[0]
+            });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error(err);
+        const message = err.message.includes('Primary database')
+            ? 'Course creation is unavailable while the primary database is offline'
+            : 'Unable to create course';
+        return res.status(err.message.includes('Primary database') ? 503 : 500).json({ message });
     }
 });
 

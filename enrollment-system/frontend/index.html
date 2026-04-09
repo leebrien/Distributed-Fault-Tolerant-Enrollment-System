@@ -152,6 +152,30 @@
               <div id="account-list-container" class="mt-3"></div>
             </div>
           </div>
+          <div class="col-12">
+            <div class="card p-4">
+              <div class="row g-4">
+                <div class="col-lg-5">
+                  <h4>Create Course</h4>
+                  <div class="row g-3 mt-1">
+                    <div class="col-12"><input type="text" id="admin-course-title" class="form-control" placeholder="Course title"></div>
+                    <div class="col-12"><textarea id="admin-course-description" class="form-control" rows="4" placeholder="Course description"></textarea></div>
+                    <div class="col-md-6"><input type="number" id="admin-course-capacity" class="form-control" placeholder="Capacity" min="1" max="500" value="30"></div>
+                    <div class="col-md-6">
+                      <select id="admin-course-faculty" class="form-select"></select>
+                    </div>
+                  </div>
+                  <div id="admin-course-faculty-help" class="small text-muted mt-3"></div>
+                  <button class="btn btn-success mt-3 w-100" onclick="createCourse()">Create Course</button>
+                  <div id="admin-course-status" class="mt-3"></div>
+                </div>
+                <div class="col-lg-7">
+                  <h4>Assign Faculty to Courses</h4>
+                  <div id="admin-course-list-container" class="mt-3"></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -191,6 +215,7 @@
     let currentUser = null;
     let authToken = null;
     let cachedAccounts = [];
+    let cachedCourses = [];
 
     const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const fmt = (v) => !v ? 'Not available yet' : (Number.isNaN(new Date(v).getTime()) ? v : new Date(v).toLocaleString());
@@ -215,6 +240,33 @@
     function logout() { location.reload(); }
     function navVisible(id, show) { document.getElementById(id).classList.toggle('hidden', !show); }
     function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text || ''; }
+    function setStatus(id, tone, text) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = text || '';
+      el.className = 'mt-3';
+      if (!text) return;
+      const resolvedTone = tone === 'success' ? 'success' : tone === 'warning' ? 'warning' : 'danger';
+      el.className = `alert alert-${resolvedTone} mt-3 mb-0`;
+    }
+    function getFacultyAccounts() { return cachedAccounts.filter((account) => account.role === 'faculty'); }
+    function facultyOptions(selectedFacultyId = null) {
+      const selected = selectedFacultyId == null ? '' : String(selectedFacultyId);
+      const options = [`<option value="" ${selected === '' ? 'selected' : ''}>Unassigned</option>`];
+      getFacultyAccounts().forEach((faculty) => {
+        const value = String(faculty.id);
+        options.push(`<option value="${value}" ${selected === value ? 'selected' : ''}>${esc(faculty.username)} (ID: ${esc(faculty.id)})</option>`);
+      });
+      return options.join('');
+    }
+    function renderCourseFacultyForm() {
+      const select = document.getElementById('admin-course-faculty');
+      if (!select) return;
+      select.innerHTML = facultyOptions();
+      document.getElementById('admin-course-faculty-help').textContent = getFacultyAccounts().length
+        ? 'Choose a faculty account now, or leave the course unassigned.'
+        : 'Create a faculty account first if you want to assign one during course creation.';
+    }
 
     async function login() {
       setText('login-error', '');
@@ -287,7 +339,7 @@
       if (tab === 'grades') loadGrades();
       if (tab === 'faculty') loadFacultyCourses();
       if (tab === 'students') loadStudents();
-      if (tab === 'admin-users') loadAccounts();
+      if (tab === 'admin-users') loadAdminView();
       if (tab === 'admin-logs') loadAuditLogs();
       if (tab === 'account') renderAccountSummary();
     }
@@ -464,10 +516,58 @@
       container.innerHTML = html;
     }
 
+    function renderAdminCoursesTable() {
+      const container = document.getElementById('admin-course-list-container');
+      if (!cachedCourses.length) {
+        container.innerHTML = '<div class="empty">No courses have been created yet.</div>';
+        return;
+      }
+      let html = `<div class="table-responsive"><table class="table table-striped"><thead class="table-success"><tr><th>ID</th><th>Course</th><th>Capacity</th><th>Faculty</th><th>Action</th></tr></thead><tbody>`;
+      cachedCourses.forEach((course) => {
+        html += `<tr>
+          <td><strong>${esc(course.id)}</strong></td>
+          <td>
+            <div class="fw-semibold">${esc(course.title)}</div>
+            <div class="text-muted small">${esc(course.description || 'No description provided.')}</div>
+          </td>
+          <td>${esc(course.capacity)}</td>
+          <td style="min-width:220px;"><select id="course-faculty-${course.id}" class="form-select form-select-sm">${facultyOptions(course.faculty_id)}</select></td>
+          <td><button class="btn btn-sm btn-outline-success" onclick="assignFaculty(${Number(course.id)})">Save Faculty</button></td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    }
+
     async function loadAccounts() {
       document.getElementById('account-list-container').innerHTML = '<div class="text-muted">Loading accounts...</div>';
-      try { cachedAccounts = await request('/api/auth/accounts'); renderAccountsTable(); }
-      catch (err) { document.getElementById('account-list-container').innerHTML = `<div class="alert alert-danger mb-0">${esc(err.message || 'Unable to load accounts.')}</div>`; }
+      try {
+        cachedAccounts = await request('/api/auth/accounts');
+        renderAccountsTable();
+      } catch (err) {
+        cachedAccounts = [];
+        document.getElementById('account-list-container').innerHTML = `<div class="alert alert-danger mb-0">${esc(err.message || 'Unable to load accounts.')}</div>`;
+      }
+      renderCourseFacultyForm();
+      if (cachedCourses.length) renderAdminCoursesTable();
+    }
+
+    async function loadAdminCourses() {
+      document.getElementById('admin-course-list-container').innerHTML = '<div class="text-muted">Loading courses...</div>';
+      try {
+        const res = await request('/api/courses');
+        cachedCourses = res.data || [];
+        renderAdminCoursesTable();
+      } catch (err) {
+        cachedCourses = [];
+        document.getElementById('admin-course-list-container').innerHTML = `<div class="alert alert-danger mb-0">${esc(err.message || 'Unable to load courses.')}</div>`;
+      }
+    }
+
+    function loadAdminView() {
+      renderCourseFacultyForm();
+      loadAccounts();
+      loadAdminCourses();
     }
 
     async function createManagedAccount() {
@@ -484,7 +584,7 @@
         const data = await request('/api/auth/accounts', { method: 'POST', body: JSON.stringify({ username, password, role, securityQuestion, securityAnswer }) });
         alert(data.message || 'Account created successfully.');
         ['admin-create-username','admin-create-password','admin-create-confirm-password','admin-create-question','admin-create-answer'].forEach((id) => document.getElementById(id).value = '');
-        loadAccounts();
+        loadAdminView();
       } catch (err) { setText('admin-account-error', err.message || 'Unable to create account.'); }
     }
 
@@ -493,7 +593,7 @@
       try {
         const data = await request(`/api/auth/accounts/${accountId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
         alert(data.message || 'Role updated successfully.');
-        loadAccounts();
+        loadAdminView();
       } catch (err) { alert(err.message || 'Unable to update role.'); }
     }
 
@@ -502,8 +602,52 @@
       try {
         const data = await request(`/api/auth/accounts/${accountId}`, { method: 'DELETE' });
         alert(data.message || 'Account deleted successfully.');
-        loadAccounts();
+        loadAdminView();
       } catch (err) { alert(err.message || 'Unable to delete account.'); }
+    }
+
+    async function createCourse() {
+      setStatus('admin-course-status', '', '');
+      const title = document.getElementById('admin-course-title').value.trim();
+      const description = document.getElementById('admin-course-description').value.trim();
+      const capacityValue = document.getElementById('admin-course-capacity').value;
+      const facultyValue = document.getElementById('admin-course-faculty').value;
+      if (!title || !capacityValue) {
+        setStatus('admin-course-status', 'danger', 'Course title and capacity are required.');
+        return;
+      }
+      try {
+        const data = await request('/api/courses', {
+          method: 'POST',
+          body: JSON.stringify({
+            title,
+            description,
+            capacity: Number(capacityValue),
+            facultyId: facultyValue ? Number(facultyValue) : null
+          })
+        });
+        ['admin-course-title','admin-course-description'].forEach((id) => document.getElementById(id).value = '');
+        document.getElementById('admin-course-capacity').value = 30;
+        document.getElementById('admin-course-faculty').value = '';
+        setStatus('admin-course-status', 'success', data.message || 'Course created successfully.');
+        loadAdminCourses();
+      } catch (err) {
+        setStatus('admin-course-status', 'danger', err.message || 'Unable to create course.');
+      }
+    }
+
+    async function assignFaculty(courseId) {
+      const facultyValue = document.getElementById(`course-faculty-${courseId}`).value;
+      try {
+        const data = await request(`/api/courses/${courseId}/faculty`, {
+          method: 'PATCH',
+          body: JSON.stringify({ facultyId: facultyValue ? Number(facultyValue) : null })
+        });
+        setStatus('admin-course-status', 'success', data.message || 'Course faculty assignment updated successfully.');
+        loadAdminCourses();
+      } catch (err) {
+        setStatus('admin-course-status', 'danger', err.message || 'Unable to update course faculty.');
+      }
     }
 
     async function loadAuditLogs() {
