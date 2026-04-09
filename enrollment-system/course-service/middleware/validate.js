@@ -47,6 +47,29 @@ const validateEnroll = [
     .isInt({ min: 1 }).withMessage('Course ID must be a positive integer.'),
 ];
 
+const validateCreateCourse = [
+  body('title')
+    .isString().withMessage('Course title must be a string.')
+    .trim()
+    .notEmpty().withMessage('Course title is required.')
+    .isLength({ max: 100 }).withMessage('Course title must be 100 characters or fewer.'),
+
+  body('description')
+    .optional({ nullable: true })
+    .isString().withMessage('Course description must be a string.')
+    .trim()
+    .isLength({ max: 1000 }).withMessage('Course description must be 1000 characters or fewer.'),
+
+  body('capacity')
+    .notEmpty().withMessage('Course capacity is required.')
+    .isInt({ min: 1, max: 500 }).withMessage('Course capacity must be a positive integer between 1 and 500.'),
+
+  body('facultyId')
+    .optional({ nullable: true })
+    .custom((value) => value === null || Number.isInteger(Number(value)) && Number(value) > 0)
+    .withMessage('Faculty ID must be a positive integer or null.'),
+];
+
 // Grade submission
 const validateGrade = [
   body('studentId')
@@ -71,6 +94,7 @@ const validateGradeQuery = [
 
 module.exports = {
   checkValidation,
+  validateCreateCourse,
   validateLogin,
   validateRegister,
   validateEnroll,
