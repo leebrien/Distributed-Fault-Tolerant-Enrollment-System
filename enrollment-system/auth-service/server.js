@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 const { ROLES, SECRET_KEY, normalizeRole, verifyToken } = require('../shared/auth');
+const { logEvent, EVENT_TYPES } = require('../shared/logEvent');
 
 const app = express();
 
@@ -535,12 +536,17 @@ app.post('/api/auth/login', async (req, res) => {
         let user = await fetchUserByUsername(username, true);
 
         if (!user) {
+            // Log failure — no userId since the user doesn't exist
+            await logEvent(EVENT_TYPES.AUTH_FAILURE, null, req,
+                `Login attempt for unknown username: ${username}`);
             return res.status(401).json({ message: "Invalid credentials" });
         }
 
         user = await clearExpiredLock(user);
 
         if (isAccountLocked(user)) {
+            await logEvent(EVENT_TYPES.AUTH_FAILURE, user.id, req,
+                `Login blocked. The account is locked until ${formatTimestamp(user.locked_until)}`);
             return res.status(423).json({
                 message: "Account is temporarily locked",
                 lockedUntil: formatTimestamp(user.locked_until)
@@ -566,8 +572,19 @@ app.post('/api/auth/login', async (req, res) => {
             );
             const failedLoginState = updateResult.rows[0];
 
+            // Log either a lockout or a plain failure
+            if (shouldLock) {
+                await logEvent(EVENT_TYPES.AUTH_LOCKOUT, user.id, req,
+                    `Account locked after ${failedAttempts} failed attempts`);
+            } else {
+                await logEvent(EVENT_TYPES.AUTH_FAILURE, user.id, req,
+                    `Invalid password (attempt ${failedAttempts} of ${LOCKOUT_THRESHOLD})`);
+            }
+
             return res.status(shouldLock ? 423 : 401).json({
-                message: shouldLock ? "Account is temporarily locked after repeated failed login attempts" : "Invalid credentials",
+                message: shouldLock
+                    ? "Account is temporarily locked after repeated failed login attempts"
+                    : "Invalid credentials",
                 failedAttempts: failedLoginState.failed_attempts,
                 attemptsRemaining: Math.max(LOCKOUT_THRESHOLD - failedLoginState.failed_attempts, 0),
                 lockedUntil: formatTimestamp(failedLoginState.locked_until),
@@ -587,11 +604,16 @@ app.post('/api/auth/login', async (req, res) => {
         const authenticatedUser = successResult.rows[0];
         const token = createAuthToken(authenticatedUser);
 
+        // Log success
+        await logEvent(EVENT_TYPES.AUTH_SUCCESS, authenticatedUser.id, req,
+            `Successful login for ${authenticatedUser.username} (role: ${authenticatedUser.role})`);
+
         return res.json({
             token,
             message: "Login successful",
             user: sanitizeUser(authenticatedUser)
         });
+
     } catch (err) {
         console.error(err);
         const message = err.message.includes('Primary database')
