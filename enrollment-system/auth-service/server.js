@@ -308,6 +308,17 @@ async function ensureAuthSchema() {
             )
         `);
 
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id SERIAL PRIMARY KEY,
+                user_id INT REFERENCES students(id) ON DELETE SET NULL,
+                event_type VARCHAR(50) NOT NULL,
+                ip_address VARCHAR(45),
+                details TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         const studentResult = await client.query(`
             SELECT id, password, password_changed_at
             FROM students
