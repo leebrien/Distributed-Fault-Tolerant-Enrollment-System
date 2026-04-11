@@ -136,7 +136,7 @@ async function ensureGradeSchema() {
 }
 
 app.get('/api/grades', verifyToken(), validateGradeQuery, async (req, res) => {
-    const invalid = checkValidation(req, res);
+    const invalid = await checkValidation(req, res);
     if (invalid) {
         return;
     }
@@ -181,7 +181,7 @@ app.get('/api/grades', verifyToken(), validateGradeQuery, async (req, res) => {
 });
 
 app.post('/api/grades', verifyToken([ROLES.FACULTY, ROLES.ADMIN]), validateGrade, async (req, res) => {
-    const invalid = checkValidation(req, res);
+    const invalid = await checkValidation(req, res);
     if (invalid) {
         return;
     }
