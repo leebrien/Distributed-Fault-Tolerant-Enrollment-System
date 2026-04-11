@@ -53,3 +53,13 @@ INSERT INTO grades (student_id, course_id, grade) VALUES
 (1, 1, 4.0),
 (1, 2, 3.5) 
 ON CONFLICT DO NOTHING;
+
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES students(id) ON DELETE SET NULL,
+    event_type VARCHAR(50) NOT NULL,
+    ip_address VARCHAR(45),
+    details TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
