@@ -172,7 +172,7 @@ app.get('/api/courses', verifyToken(), async (req, res) => {
 });
 
 app.post('/api/courses', verifyToken(ROLES.ADMIN), validateCreateCourse, async (req, res) => {
-    const invalid = checkValidation(req, res);
+    const invalid = await checkValidation(req, res);
     if (invalid) {
         return;
     }
@@ -264,7 +264,7 @@ app.get('/api/courses/enrollments', verifyToken(ROLES.STUDENT), async (req, res)
 });
 
 app.post('/api/courses/enroll', verifyToken(ROLES.STUDENT), validateEnroll, async (req, res) => {
-    const invalid = checkValidation(req, res);
+    const invalid = await checkValidation(req, res);
     if (invalid) {
         return;
     }
@@ -405,6 +405,14 @@ app.patch('/api/courses/:courseId/faculty', verifyToken(ROLES.ADMIN), async (req
             : 'Unable to update course assignment';
         return res.status(err.message.includes('Primary database') ? 503 : 500).json({ message });
     }
+});
+
+app.use((err, req, res, next) => {
+    // Log the full error server-side
+    console.error('[Unhandled Error]', err);
+
+    // Send a safe generic message to the client
+    res.status(500).json({ message: 'An unexpected error occurred.' });
 });
 
 async function bootstrap() {
