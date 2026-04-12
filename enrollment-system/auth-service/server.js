@@ -1171,6 +1171,18 @@ app.get('/api/auth/students', verifyToken([ROLES.FACULTY, ROLES.ADMIN]), async (
     }
 });
 
+//app.get('/api/auth/test-error', (req, res, next) => {
+//    next(new Error('This is a test crash'));
+//});
+
+app.use((err, req, res, next) => {
+    // Log the full error server-side
+    console.error('[Unhandled Error]', err);
+
+    // Send a safe generic message to the client
+    res.status(500).json({ message: 'An unexpected error occurred.' });
+});
+
 async function bootstrap() {
     for (let attempt = 1; attempt <= BOOTSTRAP_RETRIES; attempt += 1) {
         try {

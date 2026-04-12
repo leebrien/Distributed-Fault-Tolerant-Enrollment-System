@@ -407,6 +407,14 @@ app.patch('/api/courses/:courseId/faculty', verifyToken(ROLES.ADMIN), async (req
     }
 });
 
+app.use((err, req, res, next) => {
+    // Log the full error server-side
+    console.error('[Unhandled Error]', err);
+
+    // Send a safe generic message to the client
+    res.status(500).json({ message: 'An unexpected error occurred.' });
+});
+
 async function bootstrap() {
     await connectDB();
     await ensureCourseSchema();

@@ -1,5 +1,5 @@
 const { body, query, validationResult } = require('express-validator');
-const { logEvent, EVENT_TYPES } = require('../shared/logEvent');
+const { logEvent, EVENT_TYPES } = require('../../shared/logEvent');
 
 // Reusable helper — call this at the top of every route handler
 async function checkValidation(req, res) {
