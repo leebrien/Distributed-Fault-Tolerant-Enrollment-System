@@ -5,6 +5,9 @@ const { logEvent, EVENT_TYPES } = require('../../shared/logEvent');
 async function checkValidation(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    // Log validation failure
+    await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user?.id || null, req,
+      `Validation failed: ${errors.array().map(e => e.msg).join(', ')}`);
     return res.status(400).json({ message: errors.array()[0].msg });
   }
   return null; // no errors

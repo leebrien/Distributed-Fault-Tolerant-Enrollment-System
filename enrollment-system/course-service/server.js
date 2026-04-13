@@ -418,7 +418,7 @@ app.use((err, req, res, next) => {
 async function bootstrap() {
     await connectDB();
     await ensureCourseSchema();
-    app.listen(3001, () => console.log('Course Service running on port 3001'));
+    app.listen(3001, '0.0.0.0', () => console.log('Course Service running on port 3001'));
 }
 
 bootstrap().catch((err) => {

@@ -603,20 +603,32 @@ app.post('/api/auth/register', async (req, res) => {
     const requestedRole = normalizeRole(role || ROLES.STUDENT);
 
     if (!username || !password || !securityQuestion || !securityAnswer) {
+        // Log validation failure for missing required fields
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, null, req,
+            'Registration validation failed: Required fields missing');
         return res.status(400).json({
             message: "Username, password, security question, and security answer are required"
         });
     }
 
     if (requestedRole !== ROLES.STUDENT) {
+        // Log validation failure for invalid role
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, null, req,
+            `Registration validation failed: Invalid role requested '${role}'`);
         return res.status(403).json({ message: "Public registration may only create student accounts" });
     }
 
     if (!validatePasswordComplexity(password)) {
+        // Log validation failure for password complexity
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, null, req,
+            'Registration validation failed: Password does not meet complexity requirements');
         return sendPasswordComplexityError(res);
     }
 
     if (!isApprovedSecurityQuestion(securityQuestion)) {
+        // Log validation failure for security question
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, null, req,
+            'Registration validation failed: Security question not approved');
         return res.status(400).json({ message: SECURITY_QUESTION_POLICY_MESSAGE });
     }
 
@@ -670,6 +682,9 @@ app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
+        // Log validation failure for missing credentials
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, null, req,
+            'Login validation failed: Username and password are required');
         return res.status(400).json({ message: "Username and password are required" });
     }
 
@@ -768,6 +783,9 @@ app.post('/api/auth/password-reset/challenge', async (req, res) => {
     const { username } = req.body;
 
     if (!username) {
+        // Log validation failure for missing username
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, null, req,
+            'Password reset challenge validation failed: Username is required');
         return res.status(400).json({ message: "Username is required" });
     }
 
@@ -796,12 +814,18 @@ app.post('/api/auth/password-reset', async (req, res) => {
     const { username, securityAnswer, newPassword } = req.body;
 
     if (!username || !securityAnswer || !newPassword) {
+        // Log validation failure for missing fields
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, null, req,
+            'Password reset validation failed: Required fields missing');
         return res.status(400).json({
             message: "Username, security answer, and new password are required"
         });
     }
 
     if (!validatePasswordComplexity(newPassword)) {
+        // Log validation failure for password complexity
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, null, req,
+            'Password reset validation failed: Password does not meet complexity requirements');
         return sendPasswordComplexityError(res);
     }
 
@@ -846,6 +870,10 @@ app.post('/api/auth/password-reset', async (req, res) => {
 
             await client.query('COMMIT');
 
+            // Log successful password reset
+            await logEvent(EVENT_TYPES.PASSWORD_RESET, user.id, req,
+                `Password reset successful for user ${user.username}`);
+
             return res.json({
                 message: "Password reset successful",
                 user: sanitizeUser(passwordUpdate.user)
@@ -866,10 +894,16 @@ app.post('/api/auth/change-password', verifyToken(), async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
+        // Log validation failure for missing fields
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            'Change password validation failed: Current password and new password are required');
         return res.status(400).json({ message: "Current password and new password are required" });
     }
 
     if (!validatePasswordComplexity(newPassword)) {
+        // Log validation failure for password complexity
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            'Change password validation failed: New password does not meet complexity requirements');
         return sendPasswordComplexityError(res);
     }
 
@@ -906,6 +940,10 @@ app.post('/api/auth/change-password', verifyToken(), async (req, res) => {
 
             await client.query('COMMIT');
 
+            // Log successful password change
+            await logEvent(EVENT_TYPES.PASSWORD_CHANGE, req.user.id, req,
+                `Password changed successfully for user ${req.user.username}`);
+
             return res.json({
                 message: "Password changed successfully",
                 user: sanitizeUser(passwordUpdate.user)
@@ -926,6 +964,9 @@ app.post('/api/auth/security-question', verifyToken(), async (req, res) => {
     const { currentPassword, securityQuestion, securityAnswer } = req.body;
 
     if (!currentPassword || !securityQuestion || !securityAnswer) {
+        // Log validation failure for missing fields
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            'Security question setup validation failed: Required fields missing');
         return res.status(400).json({
             message: "Current password, security question, and security answer are required"
         });
@@ -1054,20 +1095,32 @@ app.post('/api/auth/accounts', verifyToken(ROLES.ADMIN), async (req, res) => {
     const normalizedRole = normalizeRole(role);
 
     if (!username || !password || !role || !securityQuestion || !securityAnswer) {
+        // Log validation failure for missing fields
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            'Account creation validation failed: Required fields missing');
         return res.status(400).json({
             message: "Username, password, role, security question, and security answer are required"
         });
     }
 
     if (!isManagedAccountRole(normalizedRole)) {
+        // Log validation failure for invalid role
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            `Account creation validation failed: Invalid role '${role}' for admin creation`);
         return res.status(400).json({ message: "Admins may only create admin or faculty accounts" });
     }
 
     if (!validatePasswordComplexity(password)) {
+        // Log validation failure for password complexity
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            'Account creation validation failed: Password does not meet complexity requirements');
         return sendPasswordComplexityError(res);
     }
 
     if (!isApprovedSecurityQuestion(securityQuestion)) {
+        // Log validation failure for security question
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            'Account creation validation failed: Security question not approved');
         return res.status(400).json({ message: SECURITY_QUESTION_POLICY_MESSAGE });
     }
 
@@ -1118,10 +1171,16 @@ app.patch('/api/auth/accounts/:id/role', verifyToken(ROLES.ADMIN), async (req, r
     const nextRole = normalizeRole(req.body.role);
 
     if (!Number.isInteger(accountId) || accountId <= 0) {
+        // Log validation failure for invalid account ID
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            'Role update validation failed: Invalid account ID');
         return res.status(400).json({ message: "Account ID must be a positive integer" });
     }
 
     if (!isValidRole(nextRole)) {
+        // Log validation failure for invalid role
+        await logEvent(EVENT_TYPES.VALIDATION_FAILURE, req.user.id, req,
+            `Role update validation failed: Invalid role '${req.body.role}'`);
         return res.status(400).json({ message: "Role must be student, faculty, or admin" });
     }
 
@@ -1342,7 +1401,7 @@ async function bootstrap() {
         try {
             await connectDB();
             await ensureAuthSchema();
-            app.listen(PORT, () => console.log(`Auth Service running on port ${PORT}`));
+            app.listen(PORT, '0.0.0.0', () => console.log(`Auth Service running on port ${PORT}`));
             return;
         } catch (err) {
             activePool = null;

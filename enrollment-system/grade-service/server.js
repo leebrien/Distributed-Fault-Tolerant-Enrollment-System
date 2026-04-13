@@ -276,7 +276,7 @@ app.use((err, req, res, next) => {
 async function bootstrap() {
     await connectDB();
     await ensureGradeSchema();
-    app.listen(3002, () => console.log('Grade Service running on port 3002'));
+    app.listen(3002, '0.0.0.0', () => console.log('Grade Service running on port 3002'));
 }
 
 bootstrap().catch((err) => {
