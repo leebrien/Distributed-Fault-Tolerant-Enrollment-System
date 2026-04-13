@@ -36,8 +36,23 @@
           <div class="mb-3"><input type="text" id="username" class="form-control" placeholder="Username"></div>
           <div class="mb-3"><input type="password" id="password" class="form-control" placeholder="Password"></div>
           <button class="btn btn-success w-100" onclick="login()">Sign In</button>
+          <button class="btn btn-link px-0 mt-2" onclick="toggleForgotPassword(); return false;">Forgot password?</button>
           <div class="small text-muted mt-3">Demo accounts: <strong>student1</strong>, <strong>faculty1</strong>, <strong>admin1</strong></div>
           <div id="login-error" class="text-danger mt-3"></div>
+          <div id="forgot-password-panel" class="hidden mt-4 border-top pt-4">
+            <h5 class="mb-2">Reset Password</h5>
+            <p class="text-muted">Load your recovery prompt, answer it, and choose a new password.</p>
+            <div class="mb-3"><input type="text" id="reset-username" class="form-control" placeholder="Username"></div>
+            <button class="btn btn-outline-success w-100" onclick="loadRecoveryPrompt()">Load Recovery Prompt</button>
+            <div id="forgot-password-question-box" class="alert alert-light border hidden mt-3 mb-0"></div>
+            <div id="forgot-password-fields" class="hidden">
+              <div class="mb-3 mt-3"><input type="text" id="reset-answer" class="form-control" placeholder="Recovery answer"></div>
+              <div class="mb-3"><input type="password" id="reset-new-password" class="form-control" placeholder="New password"></div>
+              <div class="mb-3"><input type="password" id="reset-confirm-password" class="form-control" placeholder="Confirm new password"></div>
+              <button class="btn btn-success w-100" onclick="submitPasswordReset()">Reset Password</button>
+            </div>
+            <div id="forgot-password-status" class="mt-3"></div>
+          </div>
         </div>
       </div>
       <div class="col-lg-7">
@@ -46,13 +61,14 @@
           <p class="text-muted">Self-registration creates a student account only.</p>
           <div class="row g-3">
             <div class="col-md-6"><input type="text" id="register-username" class="form-control" placeholder="Username"></div>
-            <div class="col-md-6"><input type="text" id="register-question" class="form-control" placeholder="Security question"></div>
+            <div class="col-md-6"><select id="register-question" class="form-select"></select></div>
             <div class="col-md-6"><input type="password" id="register-password" class="form-control" placeholder="Password"></div>
             <div class="col-md-6"><input type="password" id="register-confirm-password" class="form-control" placeholder="Confirm password"></div>
             <div class="col-12"><input type="text" id="register-answer" class="form-control" placeholder="Security answer"></div>
           </div>
           <button class="btn btn-outline-success mt-3" onclick="registerStudent()">Create Student Account</button>
           <div class="small text-muted mt-3">Password must include 8+ chars, an uppercase letter, a number, and a special character.</div>
+          <div class="small text-muted mt-2">Choose an approved recovery prompt and answer it with a private 12+ character phrase that mixes letters, numbers, and symbols.</div>
           <div id="register-error" class="text-danger mt-3"></div>
         </div>
       </div>
@@ -139,10 +155,11 @@
                     <option value="admin">Admin</option>
                   </select>
                 </div>
-                <div class="col-md-6"><input type="text" id="admin-create-question" class="form-control" placeholder="Security question"></div>
+                <div class="col-md-6"><select id="admin-create-question" class="form-select"></select></div>
                 <div class="col-12"><input type="text" id="admin-create-answer" class="form-control" placeholder="Security answer"></div>
               </div>
               <button class="btn btn-success mt-3 w-100" onclick="createManagedAccount()">Create Account</button>
+              <div class="small text-muted mt-2">Recovery answers must be private secrets, not common facts, and should use 12+ characters with mixed character types.</div>
               <div id="admin-account-error" class="text-danger mt-3"></div>
             </div>
           </div>
@@ -206,6 +223,20 @@
               <div id="account-summary" class="mt-3"></div>
             </div>
           </div>
+          <div class="col-12">
+            <div class="card p-4">
+              <h4>Update Recovery Prompt</h4>
+              <p class="text-muted">Use your current password to replace the recovery prompt and answer used for forgotten-password resets.</p>
+              <div class="row g-3">
+                <div class="col-lg-4"><input type="password" id="account-recovery-password" class="form-control" placeholder="Current password"></div>
+                <div class="col-lg-4"><select id="account-recovery-question" class="form-select"></select></div>
+                <div class="col-lg-4"><input type="text" id="account-recovery-answer" class="form-control" placeholder="New recovery answer"></div>
+              </div>
+              <button class="btn btn-outline-success mt-3" onclick="updateRecoveryPrompt()">Update Recovery Prompt</button>
+              <div class="small text-muted mt-2">Choose a private 12+ character recovery answer that mixes letters, numbers, and symbols.</div>
+              <div id="account-recovery-status" class="mt-3"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -216,9 +247,167 @@
     let authToken = null;
     let cachedAccounts = [];
     let cachedCourses = [];
+    let resetChallengeUsername = '';
+    let resetChallengeQuestion = '';
+    const approvedRecoveryQuestions = [
+      'What is the private recovery phrase you created only for this account?',
+      'What is the made-up recovery answer you chose only for this account?',
+      'What is the unique account recovery secret that only you know?'
+    ];
+    const weakRecoveryAnswers = new Set([
+      '123456',
+      '123456789',
+      'admin',
+      'blue',
+      'cat',
+      'dog',
+      'green',
+      'jesus',
+      'letmein',
+      'love',
+      'mother',
+      'password',
+      'password123',
+      'qwerty',
+      'red',
+      'secret',
+      'student',
+      'teacher',
+      'thebible',
+      'welcome',
+      'white'
+    ]);
 
     const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const fmt = (v) => !v ? 'Not available yet' : (Number.isNaN(new Date(v).getTime()) ? v : new Date(v).toLocaleString());
+    const normalizeRecoveryAnswerKey = (answer) => String(answer ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isApprovedRecoveryQuestion = (question) => approvedRecoveryQuestions.includes(String(question ?? '').trim());
+
+    function populateRecoveryQuestionSelects() {
+      const options = ['<option value="">Choose a recovery prompt</option>']
+        .concat(approvedRecoveryQuestions.map((question) => `<option value="${esc(question)}">${esc(question)}</option>`))
+        .join('');
+      ['register-question', 'admin-create-question', 'account-recovery-question'].forEach((id) => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        const currentValue = select.value;
+        select.innerHTML = options;
+        if (currentValue && approvedRecoveryQuestions.includes(currentValue)) select.value = currentValue;
+      });
+    }
+
+    function validateRecoveryAnswer(answer, username = '') {
+      const normalized = String(answer ?? '').trim();
+      if (!normalized) return 'Security answer is required.';
+      if (normalized.length < 12 || normalized.length > 100) {
+        return 'Recovery answers must be 12-100 characters long.';
+      }
+      const categoryCount = [
+        /[a-z]/.test(normalized),
+        /[A-Z]/.test(normalized),
+        /\d/.test(normalized),
+        /[^A-Za-z0-9\s]/.test(normalized)
+      ].filter(Boolean).length;
+      if (categoryCount < 3) {
+        return 'Recovery answers must include at least three of uppercase letters, lowercase letters, numbers, and symbols.';
+      }
+      const answerKey = normalizeRecoveryAnswerKey(normalized);
+      const usernameKey = normalizeRecoveryAnswerKey(username);
+      if (!answerKey || answerKey.length < 8 || new Set(answerKey).size < 6) {
+        return 'Recovery answer must use a more varied, less predictable phrase.';
+      }
+      if (weakRecoveryAnswers.has(answerKey)) {
+        return 'Choose a less predictable recovery answer that is not a common fact or common word.';
+      }
+      if (usernameKey && answerKey.includes(usernameKey)) {
+        return 'Recovery answer must not contain the username.';
+      }
+      return '';
+    }
+
+    function resetForgotPasswordState(options = {}) {
+      const { preserveUsername = false, preserveStatus = false } = options;
+      resetChallengeUsername = '';
+      resetChallengeQuestion = '';
+      document.getElementById('forgot-password-question-box').classList.add('hidden');
+      document.getElementById('forgot-password-question-box').textContent = '';
+      document.getElementById('forgot-password-fields').classList.add('hidden');
+      if (!preserveUsername) document.getElementById('reset-username').value = '';
+      document.getElementById('reset-answer').value = '';
+      document.getElementById('reset-new-password').value = '';
+      document.getElementById('reset-confirm-password').value = '';
+      if (!preserveStatus) setStatus('forgot-password-status', '', '');
+    }
+
+    function toggleForgotPassword(forceOpen = null) {
+      const panel = document.getElementById('forgot-password-panel');
+      const shouldOpen = forceOpen === null ? panel.classList.contains('hidden') : Boolean(forceOpen);
+      panel.classList.toggle('hidden', !shouldOpen);
+      if (shouldOpen) {
+        document.getElementById('login-error').textContent = '';
+        const loginUsername = document.getElementById('username').value.trim();
+        if (loginUsername && !document.getElementById('reset-username').value.trim()) {
+          document.getElementById('reset-username').value = loginUsername;
+        }
+      } else {
+        resetForgotPasswordState();
+      }
+    }
+
+    async function loadRecoveryPrompt() {
+      const username = document.getElementById('reset-username').value.trim();
+      if (!username) {
+        setStatus('forgot-password-status', 'danger', 'Username is required.');
+        return;
+      }
+      resetForgotPasswordState({ preserveUsername: true, preserveStatus: true });
+      try {
+        const data = await request('/api/auth/password-reset/challenge', {
+          method: 'POST',
+          body: JSON.stringify({ username })
+        });
+        resetChallengeUsername = data.username;
+        resetChallengeQuestion = data.securityQuestion;
+        const questionBox = document.getElementById('forgot-password-question-box');
+        questionBox.textContent = data.securityQuestion;
+        questionBox.classList.remove('hidden');
+        document.getElementById('forgot-password-fields').classList.remove('hidden');
+        setStatus('forgot-password-status', 'success', 'Recovery prompt loaded. Enter your recovery answer and new password.');
+      } catch (err) {
+        setStatus('forgot-password-status', 'danger', err.message || 'Unable to load recovery prompt.');
+      }
+    }
+
+    async function submitPasswordReset() {
+      const username = document.getElementById('reset-username').value.trim();
+      const securityAnswer = document.getElementById('reset-answer').value.trim();
+      const newPassword = document.getElementById('reset-new-password').value;
+      const confirmPassword = document.getElementById('reset-confirm-password').value;
+      if (!username || !securityAnswer || !newPassword || !confirmPassword) {
+        setStatus('forgot-password-status', 'danger', 'Username, recovery answer, and both password fields are required.');
+        return;
+      }
+      if (!resetChallengeQuestion || resetChallengeUsername !== username) {
+        setStatus('forgot-password-status', 'danger', 'Load your recovery prompt before resetting the password.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setStatus('forgot-password-status', 'danger', 'New password confirmation does not match.');
+        return;
+      }
+      try {
+        const data = await request('/api/auth/password-reset', {
+          method: 'POST',
+          body: JSON.stringify({ username, securityAnswer, newPassword })
+        });
+        document.getElementById('username').value = username;
+        document.getElementById('password').value = '';
+        resetForgotPasswordState({ preserveUsername: true, preserveStatus: true });
+        setStatus('forgot-password-status', 'success', data.message || 'Password reset successful. You can sign in with the new password now.');
+      } catch (err) {
+        setStatus('forgot-password-status', 'danger', err.message || 'Password reset failed.');
+      }
+    }
 
     async function readJson(res) { try { return await res.json(); } catch { return {}; } }
     async function request(url, options = {}) {
@@ -288,6 +477,9 @@
       const securityAnswer = document.getElementById('register-answer').value.trim();
       if (!username || !password || !confirmPassword || !securityQuestion || !securityAnswer) return setText('register-error', 'All registration fields are required.');
       if (password !== confirmPassword) return setText('register-error', 'Password confirmation does not match.');
+      if (!isApprovedRecoveryQuestion(securityQuestion)) return setText('register-error', 'Choose one of the approved recovery prompts.');
+      const recoveryAnswerError = validateRecoveryAnswer(securityAnswer, username);
+      if (recoveryAnswerError) return setText('register-error', recoveryAnswerError);
       try {
         const data = await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ username, password, securityQuestion, securityAnswer }) });
         authToken = data.token; currentUser = data.user; showDashboard();
@@ -303,7 +495,7 @@
           <dt class="col-sm-4">Last Login</dt><dd class="col-sm-8">${esc(fmt(currentUser.lastLoginAt))}</dd>
           <dt class="col-sm-4">Last Failed Login</dt><dd class="col-sm-8">${esc(fmt(currentUser.lastFailedLoginAt))}</dd>
           <dt class="col-sm-4">Password Updated</dt><dd class="col-sm-8">${esc(fmt(currentUser.passwordChangedAt))}</dd>
-          <dt class="col-sm-4">Security Question</dt><dd class="col-sm-8">${currentUser.securityQuestionConfigured ? 'Configured' : 'Not configured'}</dd>
+          <dt class="col-sm-4">Recovery Prompt</dt><dd class="col-sm-8">${currentUser.securityQuestionConfigured ? 'Configured' : 'Not configured'}</dd>
         </dl>`;
     }
 
@@ -580,6 +772,9 @@
       const securityAnswer = document.getElementById('admin-create-answer').value.trim();
       if (!username || !password || !confirmPassword || !role || !securityQuestion || !securityAnswer) return setText('admin-account-error', 'Every field is required.');
       if (password !== confirmPassword) return setText('admin-account-error', 'Password confirmation does not match.');
+      if (!isApprovedRecoveryQuestion(securityQuestion)) return setText('admin-account-error', 'Choose one of the approved recovery prompts.');
+      const recoveryAnswerError = validateRecoveryAnswer(securityAnswer, username);
+      if (recoveryAnswerError) return setText('admin-account-error', recoveryAnswerError);
       try {
         const data = await request('/api/auth/accounts', { method: 'POST', body: JSON.stringify({ username, password, role, securityQuestion, securityAnswer }) });
         alert(data.message || 'Account created successfully.');
@@ -688,6 +883,40 @@
         box.className = 'alert alert-danger mt-3 mb-0'; box.textContent = err.message || 'Unable to change password.';
       }
     }
+
+    async function updateRecoveryPrompt() {
+      const currentPassword = document.getElementById('account-recovery-password').value;
+      const securityQuestion = document.getElementById('account-recovery-question').value.trim();
+      const securityAnswer = document.getElementById('account-recovery-answer').value.trim();
+      if (!currentPassword || !securityQuestion || !securityAnswer) {
+        setStatus('account-recovery-status', 'danger', 'Current password, recovery prompt, and recovery answer are required.');
+        return;
+      }
+      if (!isApprovedRecoveryQuestion(securityQuestion)) {
+        setStatus('account-recovery-status', 'danger', 'Choose one of the approved recovery prompts.');
+        return;
+      }
+      const recoveryAnswerError = validateRecoveryAnswer(securityAnswer, currentUser?.username || '');
+      if (recoveryAnswerError) {
+        setStatus('account-recovery-status', 'danger', recoveryAnswerError);
+        return;
+      }
+      try {
+        const data = await request('/api/auth/security-question', {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword, securityQuestion, securityAnswer })
+        });
+        currentUser = data.user;
+        renderAccountSummary();
+        ['account-recovery-password', 'account-recovery-answer'].forEach((id) => document.getElementById(id).value = '');
+        document.getElementById('account-recovery-question').value = '';
+        setStatus('account-recovery-status', 'success', data.message || 'Recovery prompt updated successfully.');
+      } catch (err) {
+        setStatus('account-recovery-status', 'danger', err.message || 'Unable to update recovery prompt.');
+      }
+    }
+
+    populateRecoveryQuestionSelects();
   </script>
 </body>
 </html>

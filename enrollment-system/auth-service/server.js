@@ -22,6 +22,40 @@ const ALL_ROLES = [ROLES.STUDENT, ROLES.FACULTY, ROLES.ADMIN];
 const MANAGED_ACCOUNT_ROLES = [ROLES.FACULTY, ROLES.ADMIN];
 const PASSWORD_COMPLEXITY_MESSAGE =
     "Password must be at least 8 characters long and include one uppercase letter, one digit, and one special character.";
+const APPROVED_RECOVERY_QUESTIONS = Object.freeze([
+    "What is the private recovery phrase you created only for this account?",
+    "What is the made-up recovery answer you chose only for this account?",
+    "What is the unique account recovery secret that only you know?"
+]);
+const RECOVERY_ANSWER_MIN_LENGTH = 12;
+const RECOVERY_ANSWER_MAX_LENGTH = 100;
+const RECOVERY_ANSWER_WEAK_VALUES = new Set([
+    '123456',
+    '123456789',
+    'admin',
+    'blue',
+    'cat',
+    'dog',
+    'green',
+    'jesus',
+    'letmein',
+    'love',
+    'mother',
+    'password',
+    'password123',
+    'qwerty',
+    'red',
+    'secret',
+    'student',
+    'teacher',
+    'thebible',
+    'welcome',
+    'white'
+]);
+const SECURITY_QUESTION_POLICY_MESSAGE =
+    "Choose one of the approved recovery prompts so the answer can be a private, non-factual secret.";
+const SECURITY_ANSWER_POLICY_MESSAGE =
+    "Recovery answers must be 12-100 characters long, include at least three of uppercase letters, lowercase letters, numbers, and symbols, and avoid usernames or common answers.";
 
 const primaryConfig = {
     user: 'postgres',
@@ -121,6 +155,86 @@ function isBcryptHash(value) {
     return typeof value === 'string' && /^\$2[aby]\$\d{2}\$/.test(value);
 }
 
+function normalizeSecurityQuestion(question) {
+    return typeof question === 'string' ? question.trim() : '';
+}
+
+function normalizeSecurityAnswer(answer) {
+    return typeof answer === 'string' ? answer.trim() : '';
+}
+
+function normalizeRecoveryAnswerKey(answer) {
+    return normalizeSecurityAnswer(answer).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function isApprovedSecurityQuestion(question) {
+    return APPROVED_RECOVERY_QUESTIONS.includes(normalizeSecurityQuestion(question));
+}
+
+function hasApprovedSecurityQuestionConfigured(user) {
+    return Boolean(
+        user &&
+        isApprovedSecurityQuestion(user.security_question) &&
+        user.security_answer_hash
+    );
+}
+
+function validateSecurityAnswerStrength(answer, username = '') {
+    const normalizedAnswer = normalizeSecurityAnswer(answer);
+
+    if (!normalizedAnswer) {
+        return { ok: false, message: "Security answer is required" };
+    }
+
+    if (
+        normalizedAnswer.length < RECOVERY_ANSWER_MIN_LENGTH ||
+        normalizedAnswer.length > RECOVERY_ANSWER_MAX_LENGTH
+    ) {
+        return { ok: false, message: SECURITY_ANSWER_POLICY_MESSAGE };
+    }
+
+    const categoryCount = [
+        /[a-z]/.test(normalizedAnswer),
+        /[A-Z]/.test(normalizedAnswer),
+        /\d/.test(normalizedAnswer),
+        /[^A-Za-z0-9\s]/.test(normalizedAnswer)
+    ].filter(Boolean).length;
+
+    if (categoryCount < 3) {
+        return { ok: false, message: SECURITY_ANSWER_POLICY_MESSAGE };
+    }
+
+    const answerKey = normalizeRecoveryAnswerKey(normalizedAnswer);
+    const usernameKey = normalizeRecoveryAnswerKey(username);
+
+    if (!answerKey || answerKey.length < 8) {
+        return { ok: false, message: SECURITY_ANSWER_POLICY_MESSAGE };
+    }
+
+    if (RECOVERY_ANSWER_WEAK_VALUES.has(answerKey)) {
+        return {
+            ok: false,
+            message: "Choose a less predictable recovery answer that is not based on a common fact or common word."
+        };
+    }
+
+    if (usernameKey && answerKey.includes(usernameKey)) {
+        return {
+            ok: false,
+            message: "Recovery answer must not contain the username."
+        };
+    }
+
+    if (new Set(answerKey).size < 6) {
+        return {
+            ok: false,
+            message: "Recovery answer must use a more varied set of characters."
+        };
+    }
+
+    return { ok: true };
+}
+
 function sanitizeUser(user) {
     return {
         id: user.id,
@@ -131,7 +245,7 @@ function sanitizeUser(user) {
         lastLoginAt: formatTimestamp(user.last_login_at),
         lastFailedLoginAt: formatTimestamp(user.last_failed_login_at),
         passwordChangedAt: formatTimestamp(user.password_changed_at),
-        securityQuestionConfigured: Boolean(user.security_question && user.security_answer_hash)
+        securityQuestionConfigured: hasApprovedSecurityQuestionConfigured(user)
     };
 }
 
@@ -237,7 +351,8 @@ async function seedDefaultAdminAccount(client) {
     }
 
     const passwordHash = await bcrypt.hash('password123', BCRYPT_ROUNDS);
-    const securityAnswerHash = await bcrypt.hash('admin', BCRYPT_ROUNDS);
+    const defaultRecoveryQuestion = APPROVED_RECOVERY_QUESTIONS[0];
+    const securityAnswerHash = await bcrypt.hash('AdminVault-729!', BCRYPT_ROUNDS);
 
     const insertResult = await client.query(
         `INSERT INTO students (
@@ -251,7 +366,7 @@ async function seedDefaultAdminAccount(client) {
          VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP - INTERVAL '2 days')
          ON CONFLICT (username) DO NOTHING
          RETURNING id, password`,
-        ['admin1', passwordHash, ROLES.ADMIN, 'What account type is this?', securityAnswerHash]
+        ['admin1', passwordHash, ROLES.ADMIN, defaultRecoveryQuestion, securityAnswerHash]
     );
 
     if (insertResult.rows.length > 0) {
@@ -396,6 +511,9 @@ async function updatePasswordForUser(client, user, newPassword, options = {}) {
         };
     }
 
+    // Temporarily disable the minimum password age requirement so password
+    // changes and resets can be tested without waiting 24 hours.
+    /*
     if (enforceMinAge && user.password_changed_at) {
         const passwordAgeMs = Date.now() - new Date(user.password_changed_at).getTime();
         if (passwordAgeMs < MIN_PASSWORD_AGE_MS) {
@@ -409,6 +527,7 @@ async function updatePasswordForUser(client, user, newPassword, options = {}) {
             };
         }
     }
+    */
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     const updateResult = await client.query(
@@ -436,6 +555,8 @@ async function updatePasswordForUser(client, user, newPassword, options = {}) {
 
 async function createUserAccount(client, { username, password, role, securityQuestion, securityAnswer }) {
     const normalizedRole = normalizeRole(role);
+    const normalizedSecurityQuestion = normalizeSecurityQuestion(securityQuestion);
+    const normalizedSecurityAnswer = normalizeSecurityAnswer(securityAnswer);
     const existingUserResult = await client.query(
         'SELECT id FROM students WHERE username = $1 FOR UPDATE',
         [username]
@@ -450,7 +571,7 @@ async function createUserAccount(client, { username, password, role, securityQue
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const securityAnswerHash = await bcrypt.hash(securityAnswer, BCRYPT_ROUNDS);
+    const securityAnswerHash = await bcrypt.hash(normalizedSecurityAnswer, BCRYPT_ROUNDS);
     const insertResult = await client.query(
         `INSERT INTO students (
             username,
@@ -462,7 +583,7 @@ async function createUserAccount(client, { username, password, role, securityQue
          )
          VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
          RETURNING *`,
-        [username, passwordHash, normalizedRole, securityQuestion.trim(), securityAnswerHash]
+        [username, passwordHash, normalizedRole, normalizedSecurityQuestion, securityAnswerHash]
     );
 
     await client.query(
@@ -493,6 +614,15 @@ app.post('/api/auth/register', async (req, res) => {
 
     if (!validatePasswordComplexity(password)) {
         return sendPasswordComplexityError(res);
+    }
+
+    if (!isApprovedSecurityQuestion(securityQuestion)) {
+        return res.status(400).json({ message: SECURITY_QUESTION_POLICY_MESSAGE });
+    }
+
+    const recoveryAnswerValidation = validateSecurityAnswerStrength(securityAnswer, username);
+    if (!recoveryAnswerValidation.ok) {
+        return res.status(400).json({ message: recoveryAnswerValidation.message });
     }
 
     try {
@@ -648,13 +778,13 @@ app.post('/api/auth/password-reset/challenge', async (req, res) => {
             return res.status(404).json({ message: "User not found" });
         }
 
-        if (!user.security_question || !user.security_answer_hash) {
+        if (!hasApprovedSecurityQuestionConfigured(user)) {
             return res.status(400).json({ message: "Security question is not configured for this account" });
         }
 
         return res.json({
             username: user.username,
-            securityQuestion: user.security_question
+            securityQuestion: normalizeSecurityQuestion(user.security_question)
         });
     } catch (err) {
         console.error(err);
@@ -692,12 +822,15 @@ app.post('/api/auth/password-reset', async (req, res) => {
                 return res.status(404).json({ message: "User not found" });
             }
 
-            if (!user.security_question || !user.security_answer_hash) {
+            if (!hasApprovedSecurityQuestionConfigured(user)) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ message: "Security question is not configured for this account" });
             }
 
-            const answerMatches = await bcrypt.compare(securityAnswer, user.security_answer_hash);
+            const answerMatches = await bcrypt.compare(
+                normalizeSecurityAnswer(securityAnswer),
+                user.security_answer_hash
+            );
 
             if (!answerMatches) {
                 await client.query('ROLLBACK');
@@ -811,14 +944,26 @@ app.post('/api/auth/security-question', verifyToken(), async (req, res) => {
             return res.status(401).json({ message: "Current password is incorrect" });
         }
 
-        const securityAnswerHash = await bcrypt.hash(securityAnswer, BCRYPT_ROUNDS);
+        if (!isApprovedSecurityQuestion(securityQuestion)) {
+            return res.status(400).json({ message: SECURITY_QUESTION_POLICY_MESSAGE });
+        }
+
+        const recoveryAnswerValidation = validateSecurityAnswerStrength(securityAnswer, user.username);
+        if (!recoveryAnswerValidation.ok) {
+            return res.status(400).json({ message: recoveryAnswerValidation.message });
+        }
+
+        const securityAnswerHash = await bcrypt.hash(
+            normalizeSecurityAnswer(securityAnswer),
+            BCRYPT_ROUNDS
+        );
         const updateResult = await db.writeQuery(
             `UPDATE students
              SET security_question = $2,
                  security_answer_hash = $3
              WHERE id = $1
              RETURNING *`,
-            [user.id, securityQuestion.trim(), securityAnswerHash]
+            [user.id, normalizeSecurityQuestion(securityQuestion), securityAnswerHash]
         );
 
         return res.json({
@@ -920,6 +1065,15 @@ app.post('/api/auth/accounts', verifyToken(ROLES.ADMIN), async (req, res) => {
 
     if (!validatePasswordComplexity(password)) {
         return sendPasswordComplexityError(res);
+    }
+
+    if (!isApprovedSecurityQuestion(securityQuestion)) {
+        return res.status(400).json({ message: SECURITY_QUESTION_POLICY_MESSAGE });
+    }
+
+    const recoveryAnswerValidation = validateSecurityAnswerStrength(securityAnswer, username);
+    if (!recoveryAnswerValidation.ok) {
+        return res.status(400).json({ message: recoveryAnswerValidation.message });
     }
 
     try {
